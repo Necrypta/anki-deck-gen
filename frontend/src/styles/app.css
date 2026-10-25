@@ -1442,6 +1442,13 @@ input.field-name.is-editable:focus {
   font-size: 12px;
   color: var(--text-2);
 }
+.generate-options .option {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-2);
+}
 .generate-options label.grow {
   flex: 1;
   min-width: 200px;
@@ -1639,4 +1646,21 @@ input.field-name.is-editable:focus {
 
 .setting-help a {
   color: var(--accent);
+}
+
+/* Long file names shrink with an ellipsis instead of pushing buttons out of the pane. */
+.pane-head > .segmented {
+  flex: none;
+}
+.pane-head .toolbar-right {
+  min-width: 0;
+}
+.toolbar-right > button {
+  flex: none;
+}
+.file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

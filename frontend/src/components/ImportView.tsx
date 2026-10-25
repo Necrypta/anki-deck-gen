@@ -131,7 +131,11 @@ export function ImportView({ deck, macros, onAppend, onReplace, notify }: Props)
             ]}
           />
           <div className="toolbar-right">
-            {fileName && <span className="muted small">{fileName}</span>}
+            {fileName && (
+              <span className="file-name muted small" title={fileName}>
+                {fileName}
+              </span>
+            )}
             <button type="button" className="ghost-btn" onClick={openFile}>
               <Icon name="file" size={14} /> Open file
             </button>

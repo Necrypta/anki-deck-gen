@@ -163,7 +163,11 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
             ]}
           />
           <div className="toolbar-right">
-            {state.source && <span className="muted small">{state.source}</span>}
+            {state.source && (
+              <span className="file-name muted small" title={state.source}>
+                {state.source}
+              </span>
+            )}
             <button type="button" className="ghost-btn" onClick={openFile}>
               <Icon name="file" size={14} /> Open file
             </button>
@@ -189,10 +193,16 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
 
         <div className="generate-options">
           <label className="grow">
-            <span>Model</span>
-            <ModelSelect status={status} value={writer} onChange={(writer) => onAiChange({ ...ai, writer })} />
+            <span>Writes cards with</span>
+            <ModelSelect
+              status={status}
+              value={writer}
+              label="Model that writes the cards"
+              onChange={(writer) => onAiChange({ ...ai, writer })}
+            />
           </label>
-          <label>
+          {/* A div, not a label: a label forwards :hover to its first button. */}
+          <div className="option">
             <span>How many</span>
             <Segmented<Density>
               label="How many cards"
@@ -204,7 +214,7 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
                 { value: "thorough", label: "Thorough" },
               ]}
             />
-          </label>
+          </div>
           <label>
             <span>Focus</span>
             <select value={ai.focus} onChange={(e) => onAiChange({ ...ai, focus: e.target.value as Focus })}>
@@ -236,7 +246,7 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
         <div className="pane-head">
           <div>
             <div className="pane-title">{state.cards.length ? `${state.cards.length} suggested cards` : "Review"}</div>
-            <div className="muted small">{describeRef(writer)}</div>
+            <div className="muted small">{writer ? `Cards written by ${describeRef(writer)}` : "No model chosen"}</div>
           </div>
           <div className="toolbar-right">
             {state.cards.length > 0 && (
