@@ -1,5 +1,5 @@
 name: Build app
-description: Test the backend, build the UI, stamp the build label and package dist/AnkiDeckGenerator.exe
+description: Test the backend, build the UI, stamp the build label and package dist/AnkiDeckGenerator.exe (plus dist/ai-bakeoff.exe)
 
 inputs:
   label:
@@ -54,3 +54,9 @@ runs:
     - name: Package exe
       shell: pwsh
       run: pyinstaller --noconfirm --clean ankigen.spec
+
+    - name: Package AI bake-off tool
+      shell: pwsh
+      run: >-
+        pyinstaller --noconfirm --onefile --console --name ai-bakeoff --paths .
+        --exclude-module tkinter --exclude-module webview scripts/ai_bakeoff.py

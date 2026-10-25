@@ -50,7 +50,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.label.outputs.artifact }}
-          path: dist/AnkiDeckGenerator.exe
+          path: |
+            dist/AnkiDeckGenerator.exe
+            dist/ai-bakeoff.exe
           retention-days: 30
 
       - name: Post download link on the PR
@@ -66,7 +68,7 @@ jobs:
               marker,
               `### Test build ready: ${process.env.LABEL}`,
               ``,
-              `**[Download AnkiDeckGenerator.exe](${process.env.ARTIFACT_URL})** (zip, kept 30 days)`,
+              `**[Download the test build](${process.env.ARTIFACT_URL})** (zip, kept 30 days): \`AnkiDeckGenerator.exe\`, plus \`ai-bakeoff.exe\` for comparing local AI models (see the README).`,
               ``,
               `Unzip and run it; no install needed. It saves to \`%APPDATA%\\AnkiDeckGenerator-test\`, so your installed copy's data is untouched.`,
               `If Windows SmartScreen warns, choose **More info → Run anyway**.`,

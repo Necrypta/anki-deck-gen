@@ -53,7 +53,9 @@ def test_reversed_and_cloze_models():
 
 def test_custom_fields(tmp_path):
     spec = DeckSpec(
-        name="Custom", note_type="custom", fields=["Term", "Formula", "Units"],
+        name="Custom",
+        note_type="custom",
+        fields=["Term", "Formula", "Units"],
         cards=[Card({"Term": "Force", "Formula": "$F=ma$", "Units": "N"})],
     )
     notes = _notes(build_apkg(spec, tmp_path / "c.apkg"), tmp_path)
@@ -63,8 +65,12 @@ def test_custom_fields(tmp_path):
 def test_api_write_and_session(tmp_path):
     api = Api(data_dir=tmp_path)
     res = api.write_deck(
-        {"name": "API", "note_type": "basic", "fields": ["Front", "Back", "Extra"],
-         "cards": [{"fields": {"Front": "q", "Back": "a"}, "tags": []}]},
+        {
+            "name": "API",
+            "note_type": "basic",
+            "fields": ["Front", "Back", "Extra"],
+            "cards": [{"fields": {"Front": "q", "Back": "a"}, "tags": []}],
+        },
         str(tmp_path / "api.apkg"),
     )
     assert res["ok"] and res["count"] == 1

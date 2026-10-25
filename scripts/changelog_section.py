@@ -1,6 +1,6 @@
 """Print one version's section of CHANGELOG.md (used as GitHub Release notes).
 
-    python scripts/changelog_section.py 0.2.0 [-o notes.md]
+python scripts/changelog_section.py 0.2.0 [-o notes.md]
 """
 
 from __future__ import annotations
