@@ -35,11 +35,33 @@ Windows SmartScreen will warn about the unsigned app: choose **More info → Run
 
 Every change comes as a pull request, and every pull request gets its own test build:
 
-1. Open the PR. A bot comment links **Download AnkiDeckGenerator.exe**, and updates the link after each new push.
+1. Open the PR. A bot comment links **Download the test build**, and updates the link after each new push.
 2. Unzip it and run it. Nothing to install.
 3. Test, then reply on the PR (or in chat) with "merge" or what to fix.
 
 Test builds are clearly marked: a yellow **Test build · PR #N · sha** badge in the sidebar and a matching window title. They save to `%APPDATA%\AnkiDeckGenerator-test`, so they never touch the work saved by your installed copy, which uses `%APPDATA%\AnkiDeckGenerator`. Settings shows which folder a build is using.
+
+## Comparing local AI models (bake-off)
+
+Before AI card generation lands in the app, `ai-bakeoff.exe` (in every test-build zip) tries the local models on your own laptop and your own textbook pages, so the app's suggested defaults come from real results.
+
+1. **Install a local runtime.** Ollama is easiest: `winget install Ollama.Ollama` (or the installer from ollama.com). It runs in the background on `localhost:11434`. LM Studio, llama.cpp `llama-server` and Jan work too; the tool finds them on their default ports.
+2. **Download some models.** Run `ai-bakeoff.exe` with nothing to list what's installed and the `ollama pull …` commands for the suggestions. A good first set for an 8 GB GPU:
+   ```
+   ollama pull qwen2.5vl:7b     # reads pages (vision)
+   ollama pull qwen3-vl:8b      # reads pages (vision)
+   ollama pull qwen3:8b         # writes cards
+   ollama pull deepseek-r1:8b   # writes cards (reasoning, slower)
+   ```
+3. **Run it.** Double-click `ai-bakeoff.exe`, drag a PDF onto the window, and give it 1–3 equation-heavy pages. Or from a terminal:
+   ```
+   ai-bakeoff.exe chapter.pdf --pages 12-13
+   ai-bakeoff.exe chapter.pdf --pages 12 --read qwen2.5vl:7b lmstudio/qwen/qwen2.5-vl-7b --cards qwen3:8b
+   ```
+   Add a free Gemini key (`--gemini-key …`, or when the tool asks) to include Gemini as a reference.
+4. **Read the report.** It opens in your browser with each page image next to every model's transcription, rendered with KaTeX, plus the cards and timings. **On GPU** below 100% means the model didn't fit in VRAM and is spilling into system RAM, which is much slower. Paste the summary table (also saved as `summary.md`) into chat to pick defaults.
+
+The models are never hard-coded: the app will list whatever your runtime has installed.
 
 ## Releasing
 

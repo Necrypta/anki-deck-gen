@@ -4,6 +4,8 @@ Each pull request adds a line under **Unreleased**. Releasing moves those lines 
 
 ## [Unreleased]
 
+- **AI bake-off tool** (`ai-bakeoff.exe` in test builds): compares local models (Ollama, LM Studio, llama.cpp, Jan) and optionally Gemini on your own PDF pages, and writes a report with transcriptions, cards, speed and GPU fit. Groundwork for AI card generation.
+
 ## [0.2.0] - 2026-10-25
 
 - **Multiple decks:** work on several decks at once. They're listed in the sidebar with **New deck** (`Ctrl+Shift+N`), duplicate and delete (with undo). Each deck keeps its own cards, note type and tags. Your existing deck carries over automatically.

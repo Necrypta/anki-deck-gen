@@ -1,18 +1,18 @@
 # Roadmap & feature ideas
 
-## Planned: new card sources
+## Planned: AI card generation (in progress)
 
-Both plug into `ankigen/providers/` through the `CardSource` interface and feed the same Import preview the text parsers use.
+The shared backend is in `ankigen/ai/`. It's runtime- and model-agnostic: Ollama, any OpenAI-compatible server (LM Studio, llama.cpp, Jan, vLLM, or hosted services such as OpenRouter and DeepSeek), and Gemini.
 
-- **OCR**
-  - Text from screenshots, scans and photos: Tesseract (`pytesseract`) or PaddleOCR.
-  - **Equations → LaTeX** with a math-OCR model (e.g. `pix2tex` / LaTeX-OCR), so a screenshot of a textbook formula becomes `$…$`.
-  - Paste an image from the clipboard straight into a field.
-- **AI generation**
-  - Local: **Ollama** (`http://localhost:11434`), with no API key and fully offline.
-  - Online: Anthropic / OpenAI-compatible APIs with a user-supplied key (stored in Windows Credential Manager, not plain text).
-  - "Generate N cards from these notes / this PDF section", with structured JSON output mapped to the deck's fields and LaTeX in `$…$`.
-  - Review step: accept, edit or discard each suggested card before it's added.
+- **Step 0 (done):** `scripts/ai_bakeoff.py` compares models on real pages to choose suggested defaults.
+- **Text and Markdown → cards:**
+  - a Generate page: source → editable Markdown → options → review and add;
+  - Settings → AI, with detected runtimes, model pickers and a Gemini key stored in Windows Credential Manager.
+- **PDFs and images:**
+  - page-range picker;
+  - text layer or visual reading for scans and equations;
+  - paste a screenshot.
+- **Polish:** flag duplicates against the deck, estimate time and quota, regenerate a single card.
 
 ## Content
 
