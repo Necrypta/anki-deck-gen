@@ -173,12 +173,18 @@ class FakeProvider(Provider):
             .get("items", {})
             .get("properties", {})
         )
+        block = schema is None
+        if block:  # the plain-text format lists the fields as "Name: ..." lines
+            fields = list(
+                dict.fromkeys(re.findall(r"^([A-Za-z][\w ]*): \.\.\.$", system or "", re.MULTILINE))
+            )
         fields = fields or ["Front", "Back"]
         cards = []
         for para in [p.strip() for p in material.split("\n\n") if p.strip()][:20]:
             words = re.sub(r"\s+", " ", para)
             card = {f: "" for f in fields}
-            card[fields[0]] = f"What does this say: {words[:60]}?"
+            gist = " ".join(re.sub(r"\$\$.*?\$\$|\$[^$]*\$|\[E\d+\]", "", words).split()[:8])
+            card[fields[0]] = f"What does this say: {gist}?"
             if len(fields) > 1:
                 labels = re.findall(r"\[E\d+\]", words)
                 # Answer with an equation label, like a real model should; and
@@ -190,4 +196,7 @@ class FakeProvider(Provider):
                         wrong = slip.group(1).replace("d^2", "d").replace("dx^2", "dx")
                         cards.append({**card, fields[1]: f"$${wrong}$$"})
             cards.append(card)
+        if block:
+            text = "\n---\n".join("\n".join(f"{f}: {v}" for f, v in c.items()) for c in cards)
+            return ChatResult(text, seconds=0.01)
         return ChatResult(json.dumps({"cards": cards}), seconds=0.01)

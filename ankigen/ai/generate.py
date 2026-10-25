@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from ..latex import MacroDef
-from .cards import bare_latex, card_schema, parse_cards
+from .cards import bare_latex, card_schema, parse_block_cards, parse_cards, repair_card
 from .equations import check_math, label_equations, math_segments, substitute
 from .http import AiError
 from .prompts import card_messages
@@ -105,7 +105,10 @@ def generate_cards(
     if not chunks:
         raise AiError("There's no material to make cards from")
     progress.total = len(chunks)
-    schema = card_schema(req.fields)
+    # Gemini handles JSON (and a schema) well. Local models write plain text:
+    # escaping every LaTeX backslash inside JSON is where they garble math.
+    output = "json" if provider.kind == "gemini" else "block"
+    schema = card_schema(req.fields) if output == "json" else None
     tag = req.source_tag()
     sources = math_segments(req.material)
     fronts: list[str] = []
@@ -125,12 +128,16 @@ def generate_cards(
             focus=req.focus,
             avoid=fronts[-AVOID_LIMIT:],
             labelled=bool(table),
+            output=output,
         )
         result = provider.chat(
             model, user, system=system, schema=schema, temperature=0.0, cancel=cancel
         )
         try:
-            cards = parse_cards(result.text, req.fields, req.macros)
+            if output == "json":
+                cards = parse_cards(result.text, req.fields, req.macros)
+            else:
+                cards = parse_block_cards(result.text, req.fields)
         except ValueError as e:
             progress.warnings.append(f"Part {i}: {e}")
             cards = []
@@ -139,6 +146,7 @@ def generate_cards(
                 f"Part {i}: the reply was cut off, so some cards may be missing"
             )
         for c in cards:
+            repaired = repair_card(c, req.fields)
             unknown: list[str] = []
             for f in req.fields:
                 c[f], missing = substitute(c[f], table)
@@ -150,6 +158,7 @@ def generate_cards(
                 "bare_latex": [f for f in req.fields if bare_latex(c[f])],
                 "mismatch": mismatch,
                 "unknown_labels": sorted(set(unknown)),
+                "repaired": repaired,
             }
             progress.cards.append({"fields": c, "tags": [tag] if tag else [], "flags": flags})
             fronts.append(c[req.fields[0]][:120])

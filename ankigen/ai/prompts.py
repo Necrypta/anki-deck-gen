@@ -57,7 +57,8 @@ question would otherwise be ambiguous.
 - Prefer precise questions ("What is…", "State…", "Write the equation for…", "Why does…"). \
 Avoid yes/no questions and answers that list more than three items.
 - Keep answers short and never restate the question: give just the fact, formula or reason. \
-Put supporting detail in an extra field if there is one.
+Put supporting detail in an extra field if there is one; never repeat the answer there, leave it \
+empty instead.
 - Use LaTeX for ALL mathematics: inline $...$, display $$...$$. Never use \\( \\) or \\[ \\]. \
 Write $x$ not $ x $, and no \\text{{ }} spacers.
 - Use only facts from the material. Do not invent values, names or results.
@@ -65,7 +66,20 @@ Write $x$ not $ x $, and no \\text{{ }} spacers.
 simplify, or change the order of a derivative.
 {labels}{macros}
 {note_type}
+{reply_format}"""
+
+JSON_FORMAT = """\
 Reply with JSON only, in exactly this shape:
+{shape}
+Example of one good card (a different topic, for style only):
+{example}"""
+
+# Small local models garble LaTeX when they have to escape every backslash in
+# JSON, so they write plain text that the app's block parser reads instead.
+BLOCK_FORMAT = """\
+Reply with the cards only, in exactly this plain-text format: each field on a line starting \
+with its name and a colon, and a line with three dashes between cards. This is plain text, \
+not JSON: write LaTeX normally with single backslashes (\\frac, \\dagger, \\langle).
 {shape}
 Example of one good card (a different topic, for style only):
 {example}"""
@@ -73,7 +87,7 @@ Example of one good card (a different topic, for style only):
 
 LABEL_RULE = """\
 - Equations in the material are labelled like [E1]. To put one on a card, write only its \
-label, e.g. "Back": "[E3]" or "The Hermite recurrence: [E3]". Do not retype a labelled equation.
+label, e.g. an answer of just [E3], or "The Hermite recurrence: [E3]". Do not retype a labelled equation.
 """
 
 
@@ -130,7 +144,12 @@ def card_shape(fields: list[str]) -> str:
     return f'{{"cards": [{{{inner}}}, ...]}}'
 
 
-def example_card(fields: list[str], note_type: str = "basic") -> str:
+def block_shape(fields: list[str]) -> str:
+    card = "\n".join(f"{f}: ..." for f in fields)
+    return f"{card}\n---\n{card}"
+
+
+def example_card(fields: list[str], note_type: str = "basic", output: str = "json") -> str:
     if note_type == "cloze":
         values = [
             "The de Broglie wavelength of a particle with momentum $p$ is {{c1::$\\lambda = h/p$}}."
@@ -141,6 +160,8 @@ def example_card(fields: list[str], note_type: str = "basic") -> str:
             "$\\lambda = h/p$",
         ]
     card = {f: (values[i] if i < len(values) else "") for i, f in enumerate(fields)}
+    if output == "block":
+        return "\n".join(f"{f}: {v}".rstrip() for f, v in card.items())
     return json.dumps(card, ensure_ascii=False)
 
 
@@ -159,19 +180,28 @@ def card_messages(
     focus: str = "balanced",
     avoid: list[str] | None = None,
     labelled: bool = False,
+    output: str = "json",
 ) -> tuple[str, str]:
     """(system, user) for writing cards from a chunk of Markdown.
 
     ``labelled``: the material's equations carry ``[E1]``-style labels that the
     model should use instead of retyping. ``macros`` are only offered to the
     model when given (retyping math into macros is where small models slip).
+    ``output``: ``"json"`` (for schema-constrained backends) or ``"block"``.
     """
+    if output == "block":
+        reply_format = BLOCK_FORMAT.format(
+            shape=block_shape(fields), example=example_card(fields, note_type, "block")
+        )
+    else:
+        reply_format = JSON_FORMAT.format(
+            shape=card_shape(fields), example=example_card(fields, note_type)
+        )
     system = CARD_SYSTEM.format(
         labels=LABEL_RULE if labelled else "",
         macros=macro_rules(macros or []),
         note_type=note_type_rules(note_type, fields),
-        shape=card_shape(fields),
-        example=example_card(fields, note_type),
+        reply_format=reply_format,
     )
     user = [
         f"Write about {target_count(material, density)} cards. Focus on {FOCUS.get(focus, FOCUS['balanced'])}.",

@@ -68,3 +68,25 @@ def test_install_never_raises(monkeypatch):
     assert args.Handled is True and w.done.wait(2)
     monkeypatch.setattr(shortcuts.sys, "platform", "linux")
     assert shortcuts.install(w) is False
+
+
+def test_app_log_file(monkeypatch, tmp_path):
+    import logging
+
+    from ankigen import app
+
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    root = logging.getLogger()
+    before = list(root.handlers)
+    app._setup_logging()
+    added = [h for h in root.handlers if h not in before]
+    try:
+        logging.getLogger("ankigen.test").info("hello log")
+        for h in added:
+            h.flush()
+        log = next(tmp_path.rglob("app.log")).read_text("utf-8")
+        assert "hello log" in log
+    finally:
+        for h in added:
+            root.removeHandler(h)
+            h.close()

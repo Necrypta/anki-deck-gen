@@ -1903,3 +1903,21 @@ input.field-name.is-editable:focus {
   background: var(--accent-soft);
   color: var(--accent);
 }
+
+.stale-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 20px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 13px;
+}
+.stale-banner button {
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  padding: 2px 10px;
+  font: inherit;
+}

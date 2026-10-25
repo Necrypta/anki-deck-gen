@@ -47,10 +47,15 @@ def install(window: Any) -> bool:
         log.warning("Find shortcut: no native WebView2 control found")
         return False
 
+    seen = [0]
+
     def on_key(_sender: Any, e: Any) -> None:
         try:
             code = e.KeyCode
             name = code.ToString() if hasattr(code, "ToString") else str(code)
+            if seen[0] < 30:  # enough to see in app.log whether Ctrl+F arrives at all
+                seen[0] += 1
+                log.info("KeyDown %s ctrl=%s shift=%s", name, e.Control, e.Shift)
             if handle_key(window, bool(e.Control), bool(e.Shift), name.split(".")[-1]):
                 e.Handled = True
         except Exception:
@@ -58,6 +63,7 @@ def install(window: Any) -> bool:
 
     try:
         webview_control.KeyDown += on_key
+        log.info("Find shortcut: listening on %s", type(webview_control).__name__)
         return True
     except Exception:
         log.exception("Find shortcut: couldn't listen for keys")

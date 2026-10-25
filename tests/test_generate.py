@@ -54,7 +54,7 @@ def test_generate_cards_chunks_tags_flags_and_avoids_repeats():
         {
             "fields": {"Front": "Q1", "Back": r"p_n = \frac{1}{2}"},
             "tags": ["source::Ch_8"],
-            "flags": {"bare_latex": ["Back"], "mismatch": [], "unknown_labels": []},
+            "flags": {"bare_latex": ["Back"], "mismatch": [], "unknown_labels": [], "repaired": []},
         }
     ]
     assert "- Q1" in p.prompts[1]  # second chunk is told what's already written
