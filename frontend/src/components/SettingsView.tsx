@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { DEFAULT_MACROS, formatMacros, parseMacros } from "../lib/deck";
 import type { BuildInfo, Deck, Settings, Theme } from "../types";
+import { MacroEditor } from "./MacroEditor";
 import { MathPreview } from "./MathPreview";
 import { Segmented } from "./Segmented";
 import { TagInput } from "./TagInput";
@@ -11,11 +11,11 @@ interface Props {
   build: BuildInfo;
   onSettingsChange: (s: Settings) => void;
   onDeckChange: (d: Deck) => void;
+  notify: (msg: string, kind?: "error" | "info") => void;
 }
 
-export function SettingsView({ settings, deck, build, onSettingsChange, onDeckChange }: Props) {
-  const [macroText, setMacroText] = useState(formatMacros(settings.macros));
-  const [sample, setSample] = useState("$\\pdv{\\psi}{t} = \\frac{1}{i\\hbar}\\hat H \\psi$, $\\ce{^{238}_{92}U -> ^{234}_{90}Th + \\alpha}$");
+export function SettingsView({ settings, deck, build, onSettingsChange, onDeckChange, notify }: Props) {
+  const [sample, setSample] = useState("$\\dv[2]{x}{t} = -\\omega^2 x$, $\\pdv{\\psi}{t} = \\frac{1}{i\\hbar}\\hat H \\psi$, $\\ce{^{238}_{92}U -> ^{234}_{90}Th + \\alpha}$");
 
   return (
     <div className="settings">
@@ -43,7 +43,7 @@ export function SettingsView({ settings, deck, build, onSettingsChange, onDeckCh
         <div className="setting-row">
           <div>
             <div className="setting-label">Deck-wide tags</div>
-            <div className="setting-help">Added to every card on export.</div>
+            <div className="setting-help">Added to every card in “{deck.name}” on export.</div>
           </div>
           <div className="setting-control">
             <TagInput tags={deck.tags} onChange={(tags) => onDeckChange({ ...deck, tags })} />
@@ -62,35 +62,17 @@ export function SettingsView({ settings, deck, build, onSettingsChange, onDeckCh
       <section className="settings-group">
         <h2>LaTeX macros</h2>
         <p className="setting-help">
-          One per line, <code>\name = definition</code>. Use <code>#1</code>, <code>#2</code> for arguments. These apply
-          to the preview and are embedded in the exported cards, so Anki renders the same thing.
+          Write <code>#1</code>…<code>#9</code> in a definition for its arguments. Tick <b>Optional #1</b> to make the
+          first argument optional, written in square brackets: <code>\dv[2]{"{y}{x}"}</code> is a second derivative and{" "}
+          <code>\dv{"{y}{x}"}</code> uses the default. Saved macros apply to the preview and are embedded in exported
+          cards, so Anki renders the same thing.
         </p>
-        <textarea
-          className="code-input"
-          rows={10}
-          spellCheck={false}
-          value={macroText}
-          onChange={(e) => {
-            setMacroText(e.target.value);
-            onSettingsChange({ ...settings, macros: parseMacros(e.target.value) });
-          }}
-        />
-        <div className="setting-row tight">
-          <button
-            type="button"
-            className="ghost-btn"
-            onClick={() => {
-              setMacroText(formatMacros(DEFAULT_MACROS));
-              onSettingsChange({ ...settings, macros: { ...DEFAULT_MACROS } });
-            }}
-          >
-            Reset to physics defaults
-          </button>
-        </div>
+        <MacroEditor macros={settings.macros} notify={notify} onSave={(macros) => onSettingsChange({ ...settings, macros })} />
         <div className="macro-test">
           <input value={sample} onChange={(e) => setSample(e.target.value)} aria-label="Try a formula" />
           <MathPreview text={sample} macros={settings.macros} className="macro-test-out" showErrors />
         </div>
+        <p className="setting-help small">The test line above uses your saved macros.</p>
       </section>
 
       <footer className="settings-foot muted small">

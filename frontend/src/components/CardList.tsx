@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Card } from "../types";
+import type { Card, MacroDef } from "../types";
 import { Icon } from "./Icon";
 import { MathPreview } from "./MathPreview";
 
@@ -7,7 +7,7 @@ interface Props {
   cards: Card[];
   fields: string[];
   selectedId: string | null;
-  macros: Record<string, string>;
+  macros: MacroDef[];
   onSelect: (id: string) => void;
   onAdd: () => void;
 }

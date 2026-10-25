@@ -1,9 +1,10 @@
 import { useMemo } from "react";
 import { renderField } from "../lib/math";
+import type { MacroDef } from "../types";
 
 interface Props {
   text: string;
-  macros: Record<string, string>;
+  macros: MacroDef[];
   className?: string;
   placeholder?: string;
   showErrors?: boolean;

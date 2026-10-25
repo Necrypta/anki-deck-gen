@@ -36,3 +36,23 @@ def test_macro_preamble_counts_args():
     assert r"\newcommand{\vb}[1]{\mathbf{#1}}" in pre
     assert r"\newcommand{\hb}{\hbar}" in pre
     assert macro_preamble({}) == ""
+
+
+def test_macro_preamble_optional_argument():
+    from ankigen.latex import DEFAULT_MACROS, MacroDef
+
+    pre = macro_preamble([MacroDef(r"\dv", r"\frac{d^{#1} #2}{d #3^{#1}}", 3, "")])
+    assert r"\newcommand{\dv}[3][]{\frac{d^{#1} #2}{d #3^{#1}}}" in pre
+    pre = macro_preamble([{"name": r"\o", "args": 2, "optional": "1", "body": "#1#2"}])
+    assert r"\newcommand{\o}[2][1]{#1#2}" in pre
+    assert r"\newcommand{\dv}[3][]" in macro_preamble(DEFAULT_MACROS)
+
+
+def test_normalize_macros_accepts_dicts_and_lists():
+    from ankigen.latex import normalize_macros
+
+    legacy = normalize_macros({r"\x": "#1+#2"})
+    assert legacy[0].args == 2 and legacy[0].optional is None
+    listed = normalize_macros([{"name": r"\y", "body": "#1", "optional": None}])
+    assert listed[0].args == 1
+    assert normalize_macros(None) == []

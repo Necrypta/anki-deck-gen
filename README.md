@@ -2,10 +2,11 @@
 
 A small, minimalist Windows desktop app for building Anki decks with first-class LaTeX, made with physics in mind. Write cards by hand or import a text file, preview every formula live, and export a `.apkg` that you double-click to open in Anki.
 
+- **Several decks at once:** switch between them in the sidebar. Each one exports to its own `.apkg`.
 - **Card editor:** Front, Back and Extra fields, or your own custom fields, with a live KaTeX preview for each field and a card preview.
 - **Note types:** Basic, Basic + reversed, Cloze (`{{c1::…}}`), and Custom (any number of named fields).
 - **Text import:** paste or drop a file in the [block format](FORMAT.md#block-format) or a [delimited](FORMAT.md#delimited-format) format (TSV/CSV/pipe). Errors are reported with line numbers.
-- **LaTeX:** write `$…$` and `$$…$$`. Physics macros (`\vb`, `\dv`, `\pdv`, `\ket`, …) and `\ce{}` (mhchem) work. The macros are embedded in the exported cards, so Anki renders exactly what you previewed.
+- **LaTeX:** write `$…$` and `$$…$$`. Physics macros (`\vb`, `\dv[n]`, `\pdv[n]`, `\ket`, …) and `\ce{}` (mhchem) work, and you can define your own with up to 9 arguments and an optional first argument. The macros are embedded in the exported cards, so Anki renders exactly what you previewed.
 - **Re-exporting is safe:** deck, note-type and note IDs are stable, so importing a regenerated deck updates existing notes instead of duplicating them.
 - Autosaves your work, has light and dark themes, and is keyboard-friendly.
 
@@ -17,7 +18,8 @@ A small, minimalist Windows desktop app for building Anki decks with first-class
 | `Ctrl+M` | Wrap selection in `$…$` |
 | `Ctrl+Shift+C` | Wrap selection in a cloze (`{{cN::…}}`) |
 | `Alt+↑ / ↓` | Previous / next card |
-| `Ctrl+S` | Export `.apkg` |
+| `Ctrl+S` | Export the current deck as `.apkg` |
+| `Ctrl+Shift+N` | New deck |
 
 Name the deck with `::` to create subdecks, e.g. `Physics::Electromagnetism`. Then click **Export .apkg** and open the file in Anki.
 

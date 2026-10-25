@@ -1,10 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
+import { DeckList } from "./components/DeckList";
 import { EditorView } from "./components/EditorView";
 import { Icon, type IconName } from "./components/Icon";
 import { ImportView } from "./components/ImportView";
 import { SettingsView } from "./components/SettingsView";
-import { emptyCard, exportableCards, isEmptyCard, newSession, uid } from "./lib/deck";
+import {
+  duplicateDeck,
+  emptyCard,
+  exportableCards,
+  isEmptyCard,
+  migrateSession,
+  newDeck,
+  newSession,
+  uid,
+} from "./lib/deck";
 import { hasMathProblem } from "./lib/math";
 import type { BuildInfo, Card, Deck, Session, Settings, View } from "./types";
 
@@ -24,7 +34,8 @@ const NAV: { view: View; label: string; icon: IconName }[] = [
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [view, setView] = useState<View>("editor");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Selected card, remembered per deck.
+  const [selected, setSelected] = useState<Record<string, string | null>>({});
   const [toast, setToast] = useState<Toast | null>(null);
   const [build, setBuild] = useState<BuildInfo>({ version: "", build: "", release: true, dataDir: "" });
   const [exporting, setExporting] = useState(false);
@@ -34,9 +45,7 @@ export default function App() {
   useEffect(() => {
     (async () => {
       const [saved, info] = await Promise.all([api.loadSession(), api.info()]);
-      const s = saved.ok && saved.session?.version === 1 ? saved.session : newSession();
-      setSession(s);
-      setSelectedId(s.deck.cards[0]?.id ?? null);
+      setSession(saved.ok && saved.session ? migrateSession(saved.session) : newSession());
       if (info.ok) setBuild({ version: info.version, build: info.build, release: info.release, dataDir: info.data_dir });
     })();
   }, []);
@@ -61,12 +70,77 @@ export default function App() {
     toastTimer.current = window.setTimeout(() => setToast(null), action ? 6000 : 3200);
   }, []);
 
-  const setDeck = useCallback((deck: Deck) => setSession((s) => (s ? { ...s, deck } : s)), []);
+  const deck = session?.decks.find((d) => d.id === session.activeDeckId) ?? session?.decks[0];
+  const selectedId = deck ? selected[deck.id] ?? deck.cards[0]?.id ?? null : null;
+  const setSelectedId = useCallback(
+    (id: string | null) => deck && setSelected((s) => ({ ...s, [deck.id]: id })),
+    [deck],
+  );
+
+  /** Replace the active deck (matched by id). */
+  const setDeck = useCallback(
+    (next: Deck) =>
+      setSession((s) =>
+        s ? { ...s, decks: s.decks.map((d) => (d.id === next.id ? { ...next, updatedAt: Date.now() } : d)) } : s,
+      ),
+    [],
+  );
   const setSettings = useCallback((settings: Settings) => setSession((s) => (s ? { ...s, settings } : s)), []);
 
-  const addCard = useCallback(() => {
+  // ----- Decks -----
+
+  const selectDeck = (id: string) => {
+    setSession((s) => (s ? { ...s, activeDeckId: id } : s));
+    setView("editor");
+  };
+
+  const createDeck = useCallback(() => {
+    setSession((s) => {
+      if (!s) return s;
+      const d = newDeck(s.decks);
+      return { ...s, decks: [...s.decks, d], activeDeckId: d.id };
+    });
+    setView("editor");
+  }, []);
+
+  const copyDeck = (id: string) => {
     if (!session) return;
-    const { deck } = session;
+    const src = session.decks.find((d) => d.id === id);
+    if (!src) return;
+    const copy = duplicateDeck(src, session.decks);
+    const idx = session.decks.indexOf(src);
+    const decks = [...session.decks];
+    decks.splice(idx + 1, 0, copy);
+    setSession({ ...session, decks, activeDeckId: copy.id });
+    notify(`Duplicated as “${copy.name}”`);
+  };
+
+  const deleteDeck = (id: string) => {
+    if (!session || session.decks.length <= 1) return;
+    const idx = session.decks.findIndex((d) => d.id === id);
+    const removed = session.decks[idx];
+    const decks = session.decks.filter((d) => d.id !== id);
+    const activeDeckId = session.activeDeckId === id ? decks[Math.min(idx, decks.length - 1)].id : session.activeDeckId;
+    setSession({ ...session, decks, activeDeckId });
+    notify(`Deleted “${removed.name}”`, "info", {
+      label: "Undo",
+      run: () => {
+        const wasActive = session.activeDeckId === id;
+        setSession((s) => {
+          if (!s) return s;
+          const next = [...s.decks];
+          next.splice(idx, 0, removed);
+          return { ...s, decks: next, activeDeckId: wasActive ? removed.id : s.activeDeckId };
+        });
+        setToast(null);
+      },
+    });
+  };
+
+  // ----- Cards -----
+
+  const addCard = useCallback(() => {
+    if (!deck) return;
     setView("editor");
     // Reuse a trailing blank card instead of stacking empties.
     const last = deck.cards[deck.cards.length - 1];
@@ -77,27 +151,33 @@ export default function App() {
     const card = emptyCard(deck.fields);
     setDeck({ ...deck, cards: [...deck.cards, card] });
     setSelectedId(card.id);
-  }, [session, setDeck]);
+  }, [deck, setDeck, setSelectedId]);
 
   const deleteCard = (id: string) => {
-    if (!session) return;
-    const { deck } = session;
+    if (!deck) return;
     const idx = deck.cards.findIndex((c) => c.id === id);
     const removed = deck.cards[idx];
     const cards = deck.cards.filter((c) => c.id !== id);
     setDeck({ ...deck, cards });
     setSelectedId(cards[Math.min(idx, cards.length - 1)]?.id ?? null);
     if (!isEmptyCard(removed, deck.fields)) {
+      const deckId = deck.id;
       notify("Card deleted", "info", {
         label: "Undo",
         run: () => {
           setSession((s) => {
             if (!s) return s;
-            const next = [...s.deck.cards];
-            next.splice(idx, 0, removed);
-            return { ...s, deck: { ...s.deck, cards: next } };
+            return {
+              ...s,
+              decks: s.decks.map((d) => {
+                if (d.id !== deckId) return d;
+                const next = [...d.cards];
+                next.splice(idx, 0, removed);
+                return { ...d, cards: next };
+              }),
+            };
           });
-          setSelectedId(removed.id);
+          setSelected((s) => ({ ...s, [deckId]: removed.id }));
           setToast(null);
         },
       });
@@ -105,8 +185,7 @@ export default function App() {
   };
 
   const duplicateCard = (id: string) => {
-    if (!session) return;
-    const { deck } = session;
+    if (!deck) return;
     const idx = deck.cards.findIndex((c) => c.id === id);
     const copy: Card = { ...deck.cards[idx], id: uid(), fields: { ...deck.cards[idx].fields } };
     const cards = [...deck.cards];
@@ -116,8 +195,8 @@ export default function App() {
   };
 
   const exportDeck = useCallback(async () => {
-    if (!session || exporting) return;
-    const { deck, settings } = session;
+    if (!session || !deck || exporting) return;
+    const { settings } = session;
     const cards = exportableCards(deck);
     if (!cards.length) return notify(`Add at least one card with a ${deck.fields[0]} first`, "error");
     const broken = cards.filter((c) => deck.fields.some((f) => hasMathProblem(c.fields[f] ?? "", settings.macros))).length;
@@ -131,21 +210,24 @@ export default function App() {
       label: "Show in folder",
       run: () => res.path && api.reveal(res.path),
     });
-  }, [session, exporting, notify]);
+  }, [session, deck, exporting, notify]);
 
   // Global shortcuts.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!session) return;
-      if (e.ctrlKey && e.key === "Enter") {
+      if (!deck) return;
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        createDeck();
+      } else if (e.ctrlKey && e.key === "Enter") {
         e.preventDefault();
         addCard();
-      } else if (e.ctrlKey && e.key.toLowerCase() === "s") {
+      } else if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === "s") {
         e.preventDefault();
         exportDeck();
       } else if (e.altKey && (e.key === "ArrowDown" || e.key === "ArrowUp") && view === "editor") {
         e.preventDefault();
-        const cards = session.deck.cards;
+        const cards = deck.cards;
         const idx = cards.findIndex((c) => c.id === selectedId);
         const next = cards[Math.max(0, Math.min(cards.length - 1, idx + (e.key === "ArrowDown" ? 1 : -1)))];
         if (next) setSelectedId(next.id);
@@ -153,11 +235,11 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [session, selectedId, view, addCard, exportDeck]);
+  }, [deck, selectedId, view, addCard, exportDeck, createDeck, setSelectedId]);
 
-  if (!session) return <div className="boot" />;
+  if (!session || !deck) return <div className="boot" />;
 
-  const { deck, settings } = session;
+  const { settings } = session;
   const count = exportableCards(deck).length;
 
   return (
@@ -185,6 +267,16 @@ export default function App() {
             {n.label}
           </button>
         ))}
+
+        <DeckList
+          decks={session.decks}
+          activeId={deck.id}
+          onSelect={selectDeck}
+          onNew={createDeck}
+          onDuplicate={copyDeck}
+          onDelete={deleteDeck}
+        />
+
         <div className="rail-foot">
           <div className="kbd-hint">
             <kbd>Ctrl</kbd>
@@ -224,6 +316,7 @@ export default function App() {
         <main className="content">
           {view === "editor" && (
             <EditorView
+              key={deck.id}
               deck={deck}
               macros={settings.macros}
               selectedId={selectedId}
@@ -232,10 +325,12 @@ export default function App() {
               onAddCard={addCard}
               onDeleteCard={deleteCard}
               onDuplicateCard={duplicateCard}
+              onOpenImport={() => setView("import")}
             />
           )}
           {view === "import" && (
             <ImportView
+              key={deck.id}
               deck={deck}
               macros={settings.macros}
               notify={notify}
@@ -246,7 +341,12 @@ export default function App() {
                 setView("editor");
               }}
               onReplace={(next) => {
-                setDeck(next);
+                setDeck({
+                  ...next,
+                  id: deck.id,
+                  customFields: next.noteType === "custom" ? [...next.fields] : deck.customFields,
+                  cards: next.cards,
+                });
                 setSelectedId(next.cards[0]?.id ?? null);
                 setView("editor");
               }}
@@ -257,6 +357,7 @@ export default function App() {
               settings={settings}
               deck={deck}
               build={build}
+              notify={notify}
               onSettingsChange={setSettings}
               onDeckChange={setDeck}
             />

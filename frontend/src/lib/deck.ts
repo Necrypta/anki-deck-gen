@@ -1,4 +1,13 @@
-import { DEFAULT_FIELDS, type Card, type Deck, type NoteType, type ParseResult, type Session } from "../types";
+import {
+  DEFAULT_FIELDS,
+  type Card,
+  type Deck,
+  type NoteType,
+  type ParseResult,
+  type Session,
+  type Settings,
+} from "../types";
+import { defaultMacros, fromLegacy } from "./macros";
 
 export const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -6,52 +15,205 @@ export function emptyCard(fields: string[]): Card {
   return { id: uid(), fields: Object.fromEntries(fields.map((f) => [f, ""])), tags: [] };
 }
 
-export function newDeck(): Deck {
-  const fields = DEFAULT_FIELDS.basic;
-  return { name: "New deck", noteType: "basic", fields: [...fields], cards: [emptyCard(fields)], tags: [] };
+/** "New deck", or "New deck 2", "New deck 3"… if that name is taken. */
+export function uniqueDeckName(decks: Deck[], base = "New deck"): string {
+  const names = new Set(decks.map((d) => d.name));
+  if (!names.has(base)) return base;
+  let n = 2;
+  while (names.has(`${base} ${n}`)) n++;
+  return `${base} ${n}`;
 }
 
-export const DEFAULT_MACROS: Record<string, string> = {
-  "\\vb": "\\mathbf{#1}",
-  "\\vu": "\\hat{\\mathbf{#1}}",
-  "\\dv": "\\frac{d#1}{d#2}",
-  "\\pdv": "\\frac{\\partial #1}{\\partial #2}",
-  "\\abs": "\\left|#1\\right|",
-  "\\norm": "\\left\\lVert#1\\right\\rVert",
-  "\\ev": "\\left\\langle#1\\right\\rangle",
-  "\\bra": "\\left\\langle#1\\right|",
-  "\\ket": "\\left|#1\\right\\rangle",
-  "\\braket": "\\left\\langle#1\\middle|#2\\right\\rangle",
-  "\\grad": "\\nabla",
-  "\\curl": "\\nabla\\times",
-  "\\divg": "\\nabla\\cdot",
-};
+export function newDeck(existing: Deck[] = []): Deck {
+  const fields = DEFAULT_FIELDS.basic;
+  return {
+    id: uid(),
+    name: uniqueDeckName(existing),
+    noteType: "basic",
+    fields: [...fields],
+    cards: [emptyCard(fields)],
+    tags: [],
+    updatedAt: Date.now(),
+  };
+}
+
+export function duplicateDeck(deck: Deck, existing: Deck[]): Deck {
+  return {
+    ...deck,
+    id: uid(),
+    name: uniqueDeckName(existing, `${deck.name} copy`),
+    cards: deck.cards.map((c) => ({
+      ...c,
+      id: uid(),
+      fields: { ...c.fields },
+      tags: [...c.tags],
+      ...(c.hidden ? { hidden: [...c.hidden] } : {}),
+    })),
+    tags: [...deck.tags],
+    updatedAt: Date.now(),
+  };
+}
+
+export function defaultSettings(): Settings {
+  return { theme: "system", macros: defaultMacros() };
+}
 
 export function newSession(): Session {
-  return { version: 1, deck: newDeck(), settings: { theme: "system", macros: { ...DEFAULT_MACROS } } };
+  const deck = newDeck();
+  return { version: 2, decks: [deck], activeDeckId: deck.id, settings: defaultSettings() };
 }
 
-/**
- * Fill new field names positionally so content survives a note-type switch.
- * Old values are kept (only the deck's current fields are exported), so
- * switching Basic → Cloze → Basic round-trips without losing anything.
- */
-function remap(card: Card, from: string[], to: string[]): Card {
-  const fields = { ...card.fields };
-  to.forEach((f, i) => {
-    if (fields[f] === undefined) fields[f] = from[i] !== undefined ? card.fields[from[i]] ?? "" : "";
-  });
-  return { ...card, fields };
+/** Load any saved session shape (v1: single deck + macro map) as v2. */
+export function migrateSession(raw: unknown): Session {
+  if (!raw || typeof raw !== "object") return newSession();
+  const s = raw as Record<string, unknown>;
+  const rawSettings = (s.settings ?? {}) as Partial<Settings> & { macros?: unknown };
+  const macros = Array.isArray(rawSettings.macros)
+    ? rawSettings.macros
+    : rawSettings.macros && typeof rawSettings.macros === "object"
+      ? fromLegacy(rawSettings.macros as Record<string, string>)
+      : defaultMacros();
+  const settings: Settings = { theme: rawSettings.theme ?? "system", macros };
+
+  const rawDecks = (s.version === 2 ? s.decks : s.deck ? [s.deck] : []) as Partial<Deck>[];
+  const decks: Deck[] = rawDecks
+    .filter((d) => d && Array.isArray(d.cards) && Array.isArray(d.fields))
+    .map((d) => ({
+      id: d.id ?? uid(),
+      name: d.name ?? "Untitled",
+      noteType: d.noteType ?? "basic",
+      fields: d.fields!,
+      cards: d.cards!,
+      tags: d.tags ?? [],
+      updatedAt: d.updatedAt ?? Date.now(),
+      customFields: d.customFields ?? (d.noteType === "custom" ? [...d.fields!] : undefined),
+    }));
+  if (!decks.length) return { ...newSession(), settings };
+  const active = decks.some((d) => d.id === s.activeDeckId) ? (s.activeDeckId as string) : decks[0].id;
+  return { version: 2, decks, activeDeckId: active, settings };
+}
+
+// ----- Field layouts -----
+//
+// A card's values are ordered slots; a note type only decides how many slots
+// are shown and what they're called. Switching type relabels the slots and
+// parks any that don't fit in `card.hidden`, so nothing is ever thrown away.
+
+const trimTrailingEmpty = (values: string[]) => {
+  let n = values.length;
+  while (n > 0 && !values[n - 1].trim()) n--;
+  return values.slice(0, n);
+};
+
+/** All of a card's values in slot order: visible fields first, then hidden. */
+function slotValues(card: Card, fields: string[]): string[] {
+  return [...fields.map((f) => card.fields[f] ?? ""), ...(card.hidden ?? [])];
+}
+
+function withSlots(card: Card, to: string[], values: string[]): Card {
+  const fields = Object.fromEntries(to.map((f, i) => [f, values[i] ?? ""]));
+  const hidden = trimTrailingEmpty(values.slice(to.length));
+  const { hidden: _old, ...rest } = card;
+  return hidden.length ? { ...rest, fields, hidden } : { ...rest, fields };
+}
+
+/** The one place a deck's field list changes: relabel every card's slots. */
+export function relayout(deck: Deck, to: string[], noteType: NoteType): Deck {
+  return {
+    ...deck,
+    noteType,
+    fields: [...to],
+    customFields: noteType === "custom" ? [...to] : deck.customFields,
+    cards: deck.cards.map((c) => withSlots(c, to, slotValues(c, deck.fields))),
+  };
 }
 
 export function setNoteType(deck: Deck, noteType: NoteType): Deck {
-  const fields = noteType === "custom" ? deck.fields : [...DEFAULT_FIELDS[noteType]];
-  return { ...deck, noteType, fields, cards: deck.cards.map((c) => remap(c, deck.fields, fields)) };
+  if (noteType === deck.noteType) return deck;
+  // Remember the custom layout when leaving it, and restore it when coming back.
+  const remembered = deck.noteType === "custom" ? { ...deck, customFields: [...deck.fields] } : deck;
+  const to = noteType === "custom" ? remembered.customFields ?? deck.fields : DEFAULT_FIELDS[noteType];
+  return relayout(remembered, to, noteType);
 }
 
+/** Use exactly these field names (switches to Custom); content keeps its slots. */
 export function setFields(deck: Deck, fields: string[]): Deck {
-  return { ...deck, noteType: "custom", fields, cards: deck.cards.map((c) => remap(c, deck.fields, fields)) };
+  return relayout(deck, fields, "custom");
 }
+
+export const applyPreset = setFields;
+
+export function nextFieldName(deck: Deck): string {
+  let n = deck.fields.length + 1;
+  while (deck.fields.includes(`Field ${n}`)) n++;
+  return `Field ${n}`;
+}
+
+/** Add a slot at the end. It picks up hidden content first, if any. */
+export function addField(deck: Deck, name = nextFieldName(deck)): Deck {
+  return setFields(deck, [...deck.fields, name]);
+}
+
+/** Rename a field across all cards. Returns null if the new name is invalid or taken. */
+export function renameField(deck: Deck, from: string, to: string): Deck | null {
+  to = to.trim();
+  if (!to || to === from) return null;
+  if (deck.fields.some((f) => f.toLowerCase() === to.toLowerCase() && f !== from)) return null;
+  return setFields(
+    deck,
+    deck.fields.map((f) => (f === from ? to : f)),
+  );
+}
+
+/** Number of cards with content in a field (to warn before removing it). */
+export function cardsUsingField(deck: Deck, name: string): number {
+  return deck.cards.filter((c) => (c.fields[name] ?? "").trim()).length;
+}
+
+/** Remove a field and its content from every card (the only deleting operation). */
+export function removeField(deck: Deck, name: string): Deck {
+  const i = deck.fields.indexOf(name);
+  if (i < 0 || deck.fields.length <= 2) return deck;
+  const to = deck.fields.filter((f) => f !== name);
+  return {
+    ...deck,
+    noteType: "custom",
+    fields: to,
+    customFields: [...to],
+    cards: deck.cards.map((c) => {
+      const values = slotValues(c, deck.fields);
+      values.splice(i, 1);
+      return withSlots(c, to, values);
+    }),
+  };
+}
+
+export function moveField(deck: Deck, name: string, delta: -1 | 1): Deck {
+  const i = deck.fields.indexOf(name);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= deck.fields.length) return deck;
+  const to = [...deck.fields];
+  [to[i], to[j]] = [to[j], to[i]];
+  // Values move with their field, so cards are re-keyed by name, not by slot.
+  return {
+    ...deck,
+    noteType: "custom",
+    fields: to,
+    customFields: [...to],
+    cards: deck.cards.map((c) => withSlots(c, to, [...to.map((f) => c.fields[f] ?? ""), ...(c.hidden ?? [])])),
+  };
+}
+
+/** Cards with content the current layout doesn't show. */
+export function cardsWithHiddenContent(deck: Deck): number {
+  return deck.cards.filter((c) => c.hidden?.some((v) => v.trim())).length;
+}
+
+export const FIELD_PRESETS: { label: string; fields: string[] }[] = [
+  { label: "Term · Definition", fields: ["Term", "Definition"] },
+  { label: "Quantity · Formula · Units", fields: ["Quantity", "Formula", "Units"] },
+  { label: "Law · Statement · Equation · Notes", fields: ["Law", "Statement", "Equation", "Notes"] },
+];
 
 export function isEmptyCard(card: Card, fields?: string[]): boolean {
   return (fields ?? Object.keys(card.fields)).every((f) => !(card.fields[f] ?? "").trim());
@@ -72,19 +234,4 @@ export function cardsFromParse(result: ParseResult, fields: string[]): Card[] {
     }
     return { id: uid(), fields: out, tags: [...new Set([...result.tags, ...c.tags])] };
   });
-}
-
-export function parseMacros(text: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const line of text.split("\n")) {
-    const m = line.match(/^\s*(\\[A-Za-z]+)\s*=\s*(.+?)\s*$/);
-    if (m) out[m[1]] = m[2];
-  }
-  return out;
-}
-
-export function formatMacros(macros: Record<string, string>): string {
-  return Object.entries(macros)
-    .map(([k, v]) => `${k} = ${v}`)
-    .join("\n");
 }

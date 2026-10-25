@@ -10,23 +10,45 @@ from __future__ import annotations
 
 import html
 import re
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass(frozen=True)
+class MacroDef:
+    r"""A user macro, e.g. ``\dv`` with 3 args whose first (``#1``) is optional.
+
+    ``optional`` is the default for ``#1`` when it is optional, else ``None``,
+    matching LaTeX's ``\newcommand{\name}[args][default]{body}``.
+    """
+
+    name: str
+    body: str
+    args: int = 0
+    optional: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"name": self.name, "args": self.args, "optional": self.optional, "body": self.body}
+
 
 # Physics-flavoured defaults, roughly mirroring the LaTeX `physics` package.
-DEFAULT_MACROS: dict[str, str] = {
-    r"\vb": r"\mathbf{#1}",
-    r"\vu": r"\hat{\mathbf{#1}}",
-    r"\dv": r"\frac{d#1}{d#2}",
-    r"\pdv": r"\frac{\partial #1}{\partial #2}",
-    r"\abs": r"\left|#1\right|",
-    r"\norm": r"\left\lVert#1\right\rVert",
-    r"\ev": r"\left\langle#1\right\rangle",
-    r"\bra": r"\left\langle#1\right|",
-    r"\ket": r"\left|#1\right\rangle",
-    r"\braket": r"\left\langle#1\middle|#2\right\rangle",
-    r"\grad": r"\nabla",
-    r"\curl": r"\nabla\times",
-    r"\divg": r"\nabla\cdot",
-}
+# \dv and \pdv take an optional order: \dv[2]{y}{x} is the second derivative.
+DEFAULT_MACROS: list[MacroDef] = [
+    MacroDef(r"\vb", r"\mathbf{#1}", 1),
+    MacroDef(r"\vu", r"\hat{\mathbf{#1}}", 1),
+    MacroDef(r"\dv", r"\frac{d^{#1} #2}{d #3^{#1}}", 3, ""),
+    MacroDef(r"\pdv", r"\frac{\partial^{#1} #2}{\partial #3^{#1}}", 3, ""),
+    MacroDef(r"\abs", r"\left|#1\right|", 1),
+    MacroDef(r"\norm", r"\left\lVert#1\right\rVert", 1),
+    MacroDef(r"\ev", r"\left\langle#1\right\rangle", 1),
+    MacroDef(r"\bra", r"\left\langle#1\right|", 1),
+    MacroDef(r"\ket", r"\left|#1\right\rangle", 1),
+    MacroDef(r"\braket", r"\left\langle#1\middle|#2\right\rangle", 2),
+    MacroDef(r"\grad", r"\nabla"),
+    MacroDef(r"\curl", r"\nabla\times"),
+    MacroDef(r"\divg", r"\nabla\cdot"),
+]
 
 _ARG_RE = re.compile(r"#(\d)")
 
@@ -107,13 +129,45 @@ def _escape_outside_math(text: str) -> str:
     )
 
 
-def macro_preamble(macros: dict[str, str]) -> str:
-    r"""Build a hidden MathJax block defining ``macros`` for a card template."""
-    if not macros:
-        return ""
+def _infer_args(body: str) -> int:
+    return max((int(m) for m in _ARG_RE.findall(body)), default=0)
+
+
+def normalize_macros(value: Any) -> list[MacroDef]:
+    r"""Accept a list of MacroDef / ``{name, args, optional, body}`` dicts, or the
+    legacy ``{"\\name": "body"}`` mapping (args inferred from ``#n``)."""
+    if not value:
+        return []
+    if isinstance(value, Mapping):
+        return [MacroDef(str(k), str(v), _infer_args(str(v))) for k, v in value.items()]
+    out: list[MacroDef] = []
+    for item in value if isinstance(value, Iterable) else []:
+        if isinstance(item, MacroDef):
+            out.append(item)
+            continue
+        body = str(item.get("body", ""))
+        optional = item.get("optional")
+        out.append(MacroDef(
+            name=str(item["name"]),
+            body=body,
+            args=int(item.get("args") if item.get("args") is not None else _infer_args(body)),
+            optional=None if optional is None else str(optional),
+        ))
+    return out
+
+
+def macro_preamble(macros: Any) -> str:
+    r"""Build a hidden MathJax block defining ``macros`` for a card template.
+
+    MathJax 3 (used by Anki) supports the optional-argument form
+    ``\newcommand{\dv}[3][]{...}`` natively.
+    """
     defs = []
-    for name, body in macros.items():
-        nargs = max((int(m) for m in _ARG_RE.findall(body)), default=0)
-        arg = f"[{nargs}]" if nargs else ""
-        defs.append(rf"\newcommand{{{name}}}{arg}{{{body}}}")
+    for m in normalize_macros(macros):
+        spec = f"[{m.args}]" if m.args else ""
+        if m.args and m.optional is not None:
+            spec += f"[{m.optional}]"
+        defs.append(rf"\newcommand{{{m.name}}}{spec}{{{m.body}}}")
+    if not defs:
+        return ""
     return '<div style="display:none">\\(' + "".join(defs) + "\\)</div>\n"
