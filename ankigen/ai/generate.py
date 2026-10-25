@@ -8,14 +8,15 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from ..latex import MacroDef
-from .cards import bare_latex, card_schema, parse_cards
+from .cards import bare_latex, card_schema, parse_block_cards, parse_cards, repair_card
+from .equations import check_math, label_equations, math_segments, substitute
 from .http import AiError
 from .prompts import card_messages
 from .providers import Provider
 
 # Words per chunk. Small local models write better cards from shorter input;
 # Gemini handles a lot at once but each request is slow, so fewer is better.
-CHUNK_WORDS = {"local": 900, "gemini": 3000}
+CHUNK_WORDS = {"local": 600, "gemini": 3000}
 AVOID_LIMIT = 40  # earlier fronts passed to later chunks to avoid repeats
 
 
@@ -71,6 +72,7 @@ class Request:
     density: str = "normal"
     focus: str = "balanced"
     source: str = ""  # file name, for the source:: tag
+    use_macros: bool = False  # let the model write math with the user's macros
 
     def source_tag(self) -> str | None:
         name = re.sub(r"\.[A-Za-z0-9]+$", "", self.source).strip()
@@ -85,6 +87,7 @@ class Progress:
     message: str = ""
     cards: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    pages: dict[int, str] = field(default_factory=dict)  # reading jobs: page → Markdown
 
 
 def generate_cards(
@@ -102,8 +105,12 @@ def generate_cards(
     if not chunks:
         raise AiError("There's no material to make cards from")
     progress.total = len(chunks)
-    schema = card_schema(req.fields)
+    # Gemini handles JSON (and a schema) well. Local models write plain text:
+    # escaping every LaTeX backslash inside JSON is where they garble math.
+    output = "json" if provider.kind == "gemini" else "block"
+    schema = card_schema(req.fields) if output == "json" else None
     tag = req.source_tag()
+    sources = math_segments(req.material)
     fronts: list[str] = []
     for i, chunk in enumerate(chunks, 1):
         if cancel is not None and cancel.is_set():
@@ -111,18 +118,26 @@ def generate_cards(
         progress.message = f"Writing cards for part {i} of {len(chunks)}"
         if on_update:
             on_update()
+        labelled, table = label_equations(chunk)
         system, user = card_messages(
-            chunk,
+            labelled,
             req.fields,
             note_type=req.note_type,
-            macros=req.macros,
+            macros=req.macros if req.use_macros else None,
             density=req.density,
             focus=req.focus,
             avoid=fronts[-AVOID_LIMIT:],
+            labelled=bool(table),
+            output=output,
         )
-        result = provider.chat(model, user, system=system, schema=schema, cancel=cancel)
+        result = provider.chat(
+            model, user, system=system, schema=schema, temperature=0.0, cancel=cancel
+        )
         try:
-            cards = parse_cards(result.text, req.fields, req.macros)
+            if output == "json":
+                cards = parse_cards(result.text, req.fields, req.macros)
+            else:
+                cards = parse_block_cards(result.text, req.fields)
         except ValueError as e:
             progress.warnings.append(f"Part {i}: {e}")
             cards = []
@@ -131,10 +146,21 @@ def generate_cards(
                 f"Part {i}: the reply was cut off, so some cards may be missing"
             )
         for c in cards:
-            flags = [f for f in req.fields if bare_latex(c[f])]
-            progress.cards.append(
-                {"fields": c, "tags": [tag] if tag else [], "flags": {"bare_latex": flags}}
-            )
+            repaired = repair_card(c, req.fields)
+            unknown: list[str] = []
+            for f in req.fields:
+                c[f], missing = substitute(c[f], table)
+                unknown += missing
+            mismatch = [
+                {"field": f, **issue} for f in req.fields for issue in check_math(c[f], sources)
+            ]
+            flags = {
+                "bare_latex": [f for f in req.fields if bare_latex(c[f])],
+                "mismatch": mismatch,
+                "unknown_labels": sorted(set(unknown)),
+                "repaired": repaired,
+            }
+            progress.cards.append({"fields": c, "tags": [tag] if tag else [], "flags": flags})
             fronts.append(c[req.fields[0]][:120])
         progress.done = i
         if on_update:

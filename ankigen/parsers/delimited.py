@@ -20,8 +20,12 @@ def parse(
     fields = list(fields or ["Front", "Back"])
     result = ParseResult(fields=fields)
 
-    reader = csv.reader(io.StringIO(text.replace("\r\n", "\n")), delimiter=sep,
-                        quotechar='"', skipinitialspace=sep != "\t")
+    reader = csv.reader(
+        io.StringIO(text.replace("\r\n", "\n")),
+        delimiter=sep,
+        quotechar='"',
+        skipinitialspace=sep != "\t",
+    )
     for idx, row in enumerate(reader, start=1):
         if not row or not any(c.strip() for c in row):
             continue
@@ -29,9 +33,11 @@ def parse(
             # Anki's own exports start with "#separator:tab" style headers.
             continue
         if len(row) > len(fields):
-            result.errors.append(ParseError(
-                idx, f"{len(row)} values but only {len(fields)} fields ({', '.join(fields)})"
-            ))
+            result.errors.append(
+                ParseError(
+                    idx, f"{len(row)} values but only {len(fields)} fields ({', '.join(fields)})"
+                )
+            )
             continue
         values = {f: (row[i].strip() if i < len(row) else "") for i, f in enumerate(fields)}
         # A literal "\n" in delimited text means a line break inside the field.

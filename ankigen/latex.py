@@ -124,7 +124,9 @@ def field_to_html(text: str) -> str:
 def _escape_outside_math(text: str) -> str:
     parts = re.split(r"(\\\(.*?\\\)|\\\[.*?\\\])", text, flags=re.DOTALL)
     return "".join(
-        html.escape(p, quote=False) if idx % 2 == 0 else p.replace("<", r"\lt ").replace(">", r"\gt ")
+        html.escape(p, quote=False)
+        if idx % 2 == 0
+        else p.replace("<", r"\lt ").replace(">", r"\gt ")
         for idx, p in enumerate(parts)
     )
 
@@ -147,12 +149,14 @@ def normalize_macros(value: Any) -> list[MacroDef]:
             continue
         body = str(item.get("body", ""))
         optional = item.get("optional")
-        out.append(MacroDef(
-            name=str(item["name"]),
-            body=body,
-            args=int(item.get("args") if item.get("args") is not None else _infer_args(body)),
-            optional=None if optional is None else str(optional),
-        ))
+        out.append(
+            MacroDef(
+                name=str(item["name"]),
+                body=body,
+                args=int(item.get("args") if item.get("args") is not None else _infer_args(body)),
+                optional=None if optional is None else str(optional),
+            )
+        )
     return out
 
 

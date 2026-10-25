@@ -8,6 +8,8 @@ export interface ModelChoice {
   label: string;
   group: string;
   hint: string;
+  /** true: reads images; null: unknown (OpenAI-compatible servers don't say). */
+  vision: boolean | null;
 }
 
 export const refKey = (r: ModelRef | null | undefined) => (r ? `${r.backend}|${r.url}|${r.model}` : "");
@@ -26,7 +28,8 @@ export function modelChoices(status: AiStatus | null, stage: "cards" | "read" = 
         ref: { backend: r.backend, url: r.url, model: m.id },
         label: m.id,
         group: `${r.name} · on this computer`,
-        hint: hints.join(" · "),
+        hint: [...hints, stage === "read" && m.vision === null ? "may not read images" : ""].filter(Boolean).join(" · "),
+        vision: m.vision,
       });
     }
   }
@@ -43,6 +46,7 @@ export function modelChoices(status: AiStatus | null, stage: "cards" | "read" = 
         label: id,
         group: "Gemini · online",
         hint: id === g.default ? "best quality · slow on the free tier" : id === g.fast ? "faster, slightly lower quality" : "",
+        vision: true,
       });
     }
   }
@@ -58,6 +62,34 @@ export function effectiveWriter(ai: AiSettings, status: AiStatus | null): ModelR
   const gemini = status.gemini.has_key && status.gemini.default;
   if (gemini) return { backend: "gemini", url: "", model: gemini };
   return choices[0]?.ref ?? null;
+}
+
+/** The model that reads pages: the saved choice if available, else a vision model. */
+export function effectiveReader(ai: AiSettings, status: AiStatus | null): ModelRef | null {
+  const choices = modelChoices(status, "read");
+  if (ai.reader && choices.some((c) => sameRef(c.ref, ai.reader))) return ai.reader;
+  if (!status) return ai.reader;
+  if (status.suggested.read) return status.suggested.read;
+  const local = choices.find((c) => c.ref.backend !== "gemini" && c.vision);
+  if (local) return local.ref;
+  const gemini = status.gemini.has_key && status.gemini.default;
+  return gemini ? { backend: "gemini", url: "", model: gemini } : null;
+}
+
+/** "1-3, 7" → [1, 2, 3, 7]; empty means every page; null when it doesn't parse. Mirrors sources.py. */
+export function parsePageRange(spec: string, count: number): number[] | null {
+  if (!spec.trim()) return Array.from({ length: count }, (_, i) => i + 1);
+  const out: number[] = [];
+  for (const part of spec.replace(/\s/g, "").split(",")) {
+    if (!part) continue;
+    const m = /^(\d+)(?:-(\d*))?$/.exec(part);
+    if (!m) return null;
+    const a = Number(m[1]);
+    const b = m[2] === undefined ? a : m[2] === "" ? count : Number(m[2]);
+    if (a < 1 || b > count || a > b) return null;
+    for (let n = a; n <= b; n++) if (!out.includes(n)) out.push(n);
+  }
+  return out;
 }
 
 export function describeRef(ref: ModelRef | null): string {

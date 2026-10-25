@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { api } from "../api";
 import type { AiStatus, BuildInfo, Deck, Settings, Theme } from "../types";
 import { AiSettings } from "./AiSettings";
 import { MacroEditor } from "./MacroEditor";
@@ -106,7 +107,15 @@ export function SettingsView({
           Anki Deck Generator {build.version}
           {!build.release && build.build && ` · test build ${build.build}`}
         </div>
-        {build.dataDir && <div>Data: {build.dataDir}</div>}
+        <div>Screen build: {__UI_BUILD__}</div>
+        {build.dataDir && (
+          <div>
+            Data: {build.dataDir}{" "}
+            <button type="button" className="link-btn" onClick={() => api.reveal(`${build.dataDir}/app.log`)}>
+              Show log file
+            </button>
+          </div>
+        )}
       </footer>
     </div>
   );

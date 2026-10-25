@@ -48,29 +48,43 @@ def build_model(spec: DeckSpec) -> genanki.Model:
 
     if spec.note_type == "cloze":
         text, rest = fields[0], fields[1:]
-        templates = [{
-            "name": "Cloze",
-            "qfmt": pre + f"{{{{cloze:{text}}}}}",
-            "afmt": pre + f"{{{{cloze:{text}}}}}" + _extra_html(rest),
-        }]
-        return genanki.Model(model_id, name, fields=model_fields, templates=templates,
-                             css=CARD_CSS, model_type=genanki.Model.CLOZE)
+        templates = [
+            {
+                "name": "Cloze",
+                "qfmt": pre + f"{{{{cloze:{text}}}}}",
+                "afmt": pre + f"{{{{cloze:{text}}}}}" + _extra_html(rest),
+            }
+        ]
+        return genanki.Model(
+            model_id,
+            name,
+            fields=model_fields,
+            templates=templates,
+            css=CARD_CSS,
+            model_type=genanki.Model.CLOZE,
+        )
 
     if len(fields) < 2:
         raise ValueError("Basic and custom note types need at least two fields")
 
     front, back, rest = fields[0], fields[1], fields[2:]
-    templates = [{
-        "name": "Card 1",
-        "qfmt": pre + f"{{{{{front}}}}}",
-        "afmt": pre + f'{{{{FrontSide}}}}<hr id="answer">{{{{{back}}}}}' + _extra_html(rest),
-    }]
+    templates = [
+        {
+            "name": "Card 1",
+            "qfmt": pre + f"{{{{{front}}}}}",
+            "afmt": pre + f'{{{{FrontSide}}}}<hr id="answer">{{{{{back}}}}}' + _extra_html(rest),
+        }
+    ]
     if spec.note_type == "reversed":
-        templates.append({
-            "name": "Card 2",
-            "qfmt": pre + f"{{{{{back}}}}}",
-            "afmt": pre + f'{{{{FrontSide}}}}<hr id="answer">{{{{{front}}}}}' + _extra_html(rest),
-        })
+        templates.append(
+            {
+                "name": "Card 2",
+                "qfmt": pre + f"{{{{{back}}}}}",
+                "afmt": pre
+                + f'{{{{FrontSide}}}}<hr id="answer">{{{{{front}}}}}'
+                + _extra_html(rest),
+            }
+        )
     return genanki.Model(model_id, name, fields=model_fields, templates=templates, css=CARD_CSS)
 
 

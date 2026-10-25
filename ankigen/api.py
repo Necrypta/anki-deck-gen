@@ -19,6 +19,7 @@ from typing import Any
 from .ai import catalog, secrets
 from .ai.generate import Request, generate_cards
 from .ai.jobs import Jobs
+from .ai.reading import Reader, ReadRequest, describe_source, save_upload, thumbnails
 from .deck import build_apkg
 from .latex import DEFAULT_MACROS, normalize_macros
 from .models import DeckSpec
@@ -46,6 +47,7 @@ def _safe(fn: Callable[..., Any]) -> Callable[..., dict[str, Any]]:
             return {"ok": True, **(fn(*args, **kwargs) or {})}
         except Exception as exc:  # noqa: BLE001 - surfaced in the UI as a toast
             return {"ok": False, "error": str(exc)}
+
     return wrapper
 
 
@@ -68,12 +70,17 @@ class Api:
         self._window = window
 
     @property
+    def _dir(self) -> Path:
+        return self._data_dir or app_data_dir()
+
+    @property
     def _session_file(self) -> Path:
-        return (self._data_dir or app_data_dir()) / "session.json"
+        return self._dir / "session.json"
 
     @_safe
     def info(self) -> dict[str, Any]:
         from . import __version__, build_label, is_release
+
         return {
             "version": __version__,
             "build": build_label(),
@@ -84,7 +91,9 @@ class Api:
         }
 
     @_safe
-    def parse_text(self, text: str, fmt: str = "block", options: dict | None = None) -> dict[str, Any]:
+    def parse_text(
+        self, text: str, fmt: str = "block", options: dict | None = None
+    ) -> dict[str, Any]:
         return parse_text(text, fmt, **(options or {})).to_dict()
 
     @_safe
@@ -191,11 +200,52 @@ class Api:
             density=request.get("density", "normal"),
             focus=request.get("focus", "balanced"),
             source=request.get("source", ""),
+            use_macros=bool(request.get("use_macros")),
         )
         if not req.material.strip():
             raise ValueError("Add some material first")
         job = self._jobs.start(
             lambda job: generate_cards(
+                provider, ref.get("model", ""), req, progress=job.progress, cancel=job.cancel
+            )
+        )
+        return {"job": job.id}
+
+    @_safe
+    def open_source_file(self) -> dict[str, Any]:
+        """Pick a PDF, image, or text/Markdown file for the Generate page."""
+        result = self._window.create_file_dialog(
+            _dialog("OPEN"),
+            file_types=(
+                "Study material (*.pdf;*.png;*.jpg;*.jpeg;*.webp;*.txt;*.md)",
+                "All files (*.*)",
+            ),
+        )
+        if not result:
+            return {"cancelled": True}
+        return describe_source(result[0])
+
+    @_safe
+    def upload_source(self, name: str, data_b64: str) -> dict[str, Any]:
+        """A dropped or pasted file: the page can't pass a path, so it sends the bytes."""
+        info = describe_source(save_upload(self._dir / "uploads", name, data_b64))
+        return {**info, "name": name}  # show the name the user knows, not the stored one
+
+    @_safe
+    def source_thumbnails(self, path: str, pages: list[int]) -> dict[str, Any]:
+        return {"thumbs": {str(n): url for n, url in thumbnails(path, pages[:40]).items()}}
+
+    @_safe
+    def start_read(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Read PDF pages or an image into Markdown in the background."""
+        req = ReadRequest(
+            path=request["path"], pages=request.get("pages", ""), mode=request.get("mode", "ai")
+        )
+        ref = request.get("model") or {}
+        provider = catalog.provider_for(ref, "read") if req.mode == "ai" else None
+        reader = Reader(self._dir / "cache" / "read")
+        job = self._jobs.start(
+            lambda job: reader.run(
                 provider, ref.get("model", ""), req, progress=job.progress, cancel=job.cancel
             )
         )
@@ -209,4 +259,3 @@ class Api:
     def cancel_job(self, job_id: str) -> dict[str, Any]:
         self._jobs.get(job_id).cancel.set()
         return {}
-

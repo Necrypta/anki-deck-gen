@@ -6,11 +6,13 @@ interface Props {
   value: ModelRef | null;
   onChange: (ref: ModelRef) => void;
   label?: string;
+  /** "read" lists only models that can read images. */
+  stage?: "cards" | "read";
 }
 
 /** A model picker grouped by where the model runs. */
-export function ModelSelect({ status, value, onChange, label = "Model" }: Props) {
-  const choices = modelChoices(status);
+export function ModelSelect({ status, value, onChange, label = "Model", stage = "cards" }: Props) {
+  const choices = modelChoices(status, stage);
   const groups = [...new Set(choices.map((c) => c.group))];
   const current = refKey(value);
   const known = choices.some((c) => refKey(c.ref) === current);
@@ -26,7 +28,7 @@ export function ModelSelect({ status, value, onChange, label = "Model" }: Props)
         if (pick) onChange(pick.ref);
       }}
     >
-      {!choices.length && <option value="">{status ? "No models available" : "Checking…"}</option>}
+      {!choices.length && <option value="">{status ? (stage === "read" ? "No vision models available" : "No models available") : "Checking…"}</option>}
       {value && !known && choices.length > 0 && <option value={current}>{value.model} (not available)</option>}
       {groups.map((g) => (
         <optgroup key={g} label={g}>

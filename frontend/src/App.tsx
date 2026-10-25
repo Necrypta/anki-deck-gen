@@ -319,6 +319,14 @@ export default function App() {
       </nav>
 
       <div className="main">
+        {build.build && build.build !== "dev" && __UI_BUILD__ !== "dev" && build.build !== __UI_BUILD__ && (
+          <div className="stale-banner" role="alert">
+            This window is showing a different version of the screen (screen {__UI_BUILD__}, app {build.build}).
+            <button type="button" onClick={() => location.replace(`${location.pathname}?v=${Date.now()}`)}>
+              Reload
+            </button>
+          </div>
+        )}
         <header className="topbar">
           <input
             className="deck-name"

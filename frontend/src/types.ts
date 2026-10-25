@@ -51,6 +51,8 @@ export interface AiSettings {
   density: Density;
   focus: Focus;
   tagSource: boolean;
+  /** Let the model rewrite math with the user's macros (small models slip doing this). */
+  useMacros: boolean;
 }
 
 export interface Settings {
@@ -126,7 +128,13 @@ export interface AiStatus {
 export interface GeneratedCard {
   fields: Record<string, string>;
   tags: string[];
-  flags: { bare_latex: string[] };
+  flags: {
+    bare_latex: string[];
+    /** Math the model retyped that nearly matches the material: the material's version is in `source`. */
+    mismatch?: { field: string; got: string; source: string }[];
+    /** [E7]-style labels that didn't match any equation. */
+    unknown_labels?: string[];
+  };
 }
 
 export interface JobStatus {
@@ -140,4 +148,18 @@ export interface JobStatus {
   cards: GeneratedCard[];
   card_count: number;
   warnings: string[];
+  /** Reading jobs: page number → Markdown. */
+  pages: Record<string, string>;
 }
+
+/** A PDF or image picked on the Generate page (text files go straight into the material). */
+export interface SourceFile {
+  kind: "pdf" | "image";
+  path: string;
+  name: string;
+  pages: number;
+  /** Pages with a usable text layer (none for scans and images). */
+  text_pages: number[];
+}
+
+export type ReadMode = "ai" | "text";

@@ -11,7 +11,14 @@ from ankigen.api import Api
 
 
 def test_chunk_markdown_keeps_display_math_and_headings():
-    text = "# A\n\n" + "one " * 30 + "\n\n$$\nx\n\ny\n$$\n\n## B\n\n" + "word " * 50 + "\n\n" + "more " * 50
+    text = (
+        "# A\n\n"
+        + "one " * 30
+        + "\n\n$$\nx\n\ny\n$$\n\n## B\n\n"
+        + "word " * 50
+        + "\n\n"
+        + "more " * 50
+    )
     chunks = chunk_markdown(text, 60)
     assert chunks[0].startswith("# A") and "$$\nx\n\ny\n$$" in chunks[0]
     assert chunks[1].startswith("## B")
@@ -47,7 +54,7 @@ def test_generate_cards_chunks_tags_flags_and_avoids_repeats():
         {
             "fields": {"Front": "Q1", "Back": r"p_n = \frac{1}{2}"},
             "tags": ["source::Ch_8"],
-            "flags": {"bare_latex": ["Back"]},
+            "flags": {"bare_latex": ["Back"], "mismatch": [], "unknown_labels": [], "repaired": []},
         }
     ]
     assert "- Q1" in p.prompts[1]  # second chunk is told what's already written
