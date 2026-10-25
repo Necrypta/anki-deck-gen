@@ -11,7 +11,7 @@ much of each Ollama model fitted on the GPU.
 
 Models are ``[runtime/]model``; the runtime defaults to ollama. Runtimes:
 ollama, lmstudio, llamacpp, jan, openai (needs --openai URL), gemini (needs a
-key via --gemini-key or GEMINI_API_KEY). For example ``lmstudio/qwen/qwen2.5-vl-7b``.
+key via --gemini-key or GEMINI_API_KEY; ``gemini/auto`` picks the newest Flash). For example ``lmstudio/qwen/qwen2.5-vl-7b``.
 """
 
 from __future__ import annotations
@@ -134,6 +134,9 @@ class Runtimes:
     def parse(self, spec: str) -> Model:
         runtime, _, rest = spec.partition("/")
         if rest and runtime in RUNTIME_URLS:
+            if runtime == "gemini" and rest == "auto":
+                rest = default_gemini(self.models("gemini")) or "auto"
+                print(f"gemini/auto -> gemini/{rest}")
             return Model(runtime, rest, self.provider(runtime))
         return Model("ollama", spec, self.provider("ollama"))
 

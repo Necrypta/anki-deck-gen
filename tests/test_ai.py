@@ -535,3 +535,9 @@ def test_thinking_only_reply_is_a_clear_error(stub):
 def test_openai_sends_token_limit(stub):
     OpenAICompatible(stub.url).chat("local-model", "hi")
     assert stub.requests[-1][1]["max_tokens"] == 4096
+
+
+def test_bakeoff_gemini_auto(stub):
+    bo = _bakeoff()
+    args = bo.argparse.Namespace(gemini=f"{stub.url}/v1beta", gemini_key="K", num_ctx=8192)
+    assert bo.Runtimes(args).parse("gemini/auto").id == "gemini-2.5-flash"
