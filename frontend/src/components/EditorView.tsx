@@ -1,7 +1,9 @@
-import { setFields, setNoteType } from "../lib/deck";
-import { NOTE_TYPE_LABELS, type Card, type Deck, type NoteType } from "../types";
+import { useCallback, useState } from "react";
+import { addField, setNoteType } from "../lib/deck";
+import { NOTE_TYPE_LABELS, type Card, type Deck, type MacroDef, type NoteType } from "../types";
 import { CardList } from "./CardList";
 import { FieldInput } from "./FieldInput";
+import { FieldsBar } from "./FieldsBar";
 import { Icon } from "./Icon";
 import { MathPreview } from "./MathPreview";
 import { Segmented } from "./Segmented";
@@ -9,13 +11,14 @@ import { TagInput } from "./TagInput";
 
 interface Props {
   deck: Deck;
-  macros: Record<string, string>;
+  macros: MacroDef[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   onDeckChange: (deck: Deck) => void;
   onAddCard: () => void;
   onDeleteCard: (id: string) => void;
   onDuplicateCard: (id: string) => void;
+  onOpenImport: () => void;
 }
 
 const TYPES = (Object.keys(NOTE_TYPE_LABELS) as NoteType[]).map((value) => ({
@@ -32,7 +35,10 @@ export function EditorView({
   onAddCard,
   onDeleteCard,
   onDuplicateCard,
+  onOpenImport,
 }: Props) {
+  const [focusField, setFocusField] = useState<string | null>(null);
+  const clearFocus = useCallback(() => setFocusField(null), []);
   const card = deck.cards.find((c) => c.id === selectedId) ?? deck.cards[0];
   const index = card ? deck.cards.indexOf(card) + 1 : 0;
   const custom = deck.noteType === "custom";
@@ -40,35 +46,16 @@ export function EditorView({
   const updateCard = (patch: Partial<Card>) =>
     onDeckChange({ ...deck, cards: deck.cards.map((c) => (c.id === card.id ? { ...c, ...patch } : c)) });
 
-  const addField = () => {
-    let n = deck.fields.length + 1;
-    while (deck.fields.includes(`Field ${n}`)) n++;
-    onDeckChange(setFields(deck, [...deck.fields, `Field ${n}`]));
+  const changeType = (t: NoteType) => {
+    onDeckChange(setNoteType(deck, t));
+    if (t === "custom") setFocusField(deck.fields[0]);
   };
 
-  const renameField = (from: string, to: string) => {
-    if (deck.fields.includes(to)) return;
-    const fields = deck.fields.map((f) => (f === from ? to : f));
-    onDeckChange({
-      ...deck,
-      fields,
-      cards: deck.cards.map((c) => {
-        const { [from]: value, ...rest } = c.fields;
-        return { ...c, fields: { ...rest, [to]: value ?? "" } };
-      }),
-    });
-  };
-
-  const removeField = (name: string) => {
-    if (deck.fields.length <= 2) return;
-    onDeckChange({
-      ...deck,
-      fields: deck.fields.filter((f) => f !== name),
-      cards: deck.cards.map((c) => {
-        const { [name]: _removed, ...rest } = c.fields;
-        return { ...c, fields: rest };
-      }),
-    });
+  // "+ Field" on a built-in type converts the deck to Custom.
+  const addCustomField = () => {
+    const next = addField(deck);
+    onDeckChange(next);
+    setFocusField(next.fields[next.fields.length - 1]);
   };
 
   return (
@@ -83,12 +70,10 @@ export function EditorView({
       />
       <section className="editor-main">
         <div className="editor-toolbar">
-          <Segmented
-            label="Note type"
-            value={deck.noteType}
-            options={TYPES}
-            onChange={(t) => onDeckChange(setNoteType(deck, t))}
-          />
+          <Segmented label="Note type" value={deck.noteType} options={TYPES} onChange={changeType} />
+          <button type="button" className="ghost-btn" onClick={onOpenImport} title="Create many cards from text or a file">
+            <Icon name="import" size={14} /> Import batch…
+          </button>
           {card && (
             <div className="toolbar-right">
               <span className="muted">
@@ -97,20 +82,18 @@ export function EditorView({
               <button type="button" className="icon-btn" title="Duplicate card" onClick={() => onDuplicateCard(card.id)}>
                 <Icon name="copy" />
               </button>
-              <button
-                type="button"
-                className="icon-btn danger"
-                title="Delete card"
-                onClick={() => onDeleteCard(card.id)}
-              >
+              <button type="button" className="icon-btn danger" title="Delete card" onClick={() => onDeleteCard(card.id)}>
                 <Icon name="trash" />
               </button>
             </div>
           )}
         </div>
 
-        {card ? (
-          <div className="editor-scroll">
+        <div className="editor-scroll">
+          {custom && (
+            <FieldsBar deck={deck} onDeckChange={onDeckChange} focusField={focusField} onFocused={clearFocus} />
+          )}
+          {card ? (
             <div className="editor-grid">
               <div className="editor-fields" key={card.id}>
                 {deck.fields.map((f, i) => (
@@ -120,18 +103,17 @@ export function EditorView({
                     value={card.fields[f] ?? ""}
                     macros={macros}
                     cloze={deck.noteType === "cloze" && i === 0}
-                    editableName={custom}
-                    onRename={(to) => renameField(f, to)}
-                    onRemove={custom && deck.fields.length > 2 ? () => removeField(f) : undefined}
-                    autoFocus={i === 0}
+                    autoFocus={i === 0 && !custom}
                     placeholder={placeholderFor(deck.noteType, f)}
                     onChange={(v) => updateCard({ fields: { ...card.fields, [f]: v } })}
                   />
                 ))}
                 <div className="field-row-actions">
-                  <button type="button" className="ghost-btn" onClick={addField}>
-                    <Icon name="plus" size={14} /> Field
-                  </button>
+                  {!custom && (
+                    <button type="button" className="ghost-btn" onClick={addCustomField} title="Adds a field and switches to Custom">
+                      <Icon name="plus" size={14} /> Field
+                    </button>
+                  )}
                   <div className="card-tags">
                     <span className="field-name">Tags</span>
                     <TagInput tags={card.tags} onChange={(tags) => updateCard({ tags })} />
@@ -141,15 +123,20 @@ export function EditorView({
 
               <CardPreview deck={deck} card={card} macros={macros} />
             </div>
-          </div>
-        ) : (
-          <div className="empty-state">
-            <p>No cards yet.</p>
-            <button type="button" className="primary-btn" onClick={onAddCard}>
-              <Icon name="plus" /> New card
-            </button>
-          </div>
-        )}
+          ) : (
+            <div className="empty-state">
+              <p>No cards yet.</p>
+              <div className="toolbar-right" style={{ marginLeft: 0 }}>
+                <button type="button" className="primary-btn" onClick={onAddCard}>
+                  <Icon name="plus" /> New card
+                </button>
+                <button type="button" className="ghost-btn" onClick={onOpenImport}>
+                  <Icon name="import" size={14} /> Import batch…
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </section>
     </div>
   );
@@ -164,7 +151,7 @@ function placeholderFor(type: NoteType, field: string): string {
 }
 
 /** How the card will look in Anki: front, rule, back, extras. */
-function CardPreview({ deck, card, macros }: { deck: Deck; card: Card; macros: Record<string, string> }) {
+function CardPreview({ deck, card, macros }: { deck: Deck; card: Card; macros: MacroDef[] }) {
   const [first, second, ...rest] = deck.fields;
   const isCloze = deck.noteType === "cloze";
   return (

@@ -76,7 +76,7 @@ class Api:
             "release": is_release(),
             "data_dir": str(self._data_dir or app_data_dir()),
             "formats": list(PARSERS),
-            "default_macros": DEFAULT_MACROS,
+            "default_macros": [m.to_dict() for m in DEFAULT_MACROS],
         }
 
     @_safe

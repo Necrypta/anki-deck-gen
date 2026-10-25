@@ -164,6 +164,122 @@ kbd {
   font-weight: 500;
 }
 
+.rail {
+  min-height: 0;
+}
+
+/* ---------- Deck list ---------- */
+
+.deck-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin-top: 20px;
+  flex: 0 1 auto;
+}
+
+.deck-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.deck-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.deck-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+}
+
+.deck-item:hover {
+  background: var(--surface-2);
+}
+
+.deck-item.is-active {
+  background: var(--accent-soft);
+}
+
+.deck-select {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.deck-item.is-active .deck-select {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.deck-name-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deck-count {
+  font-size: 11px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.deck-actions {
+  display: none;
+  gap: 2px;
+  padding-right: 4px;
+}
+
+.deck-item:hover .deck-actions,
+.deck-item:focus-within .deck-actions {
+  display: flex;
+}
+
+.deck-item:hover .deck-count,
+.deck-item:focus-within .deck-count {
+  display: none;
+}
+
+.new-deck-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 6px 10px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.new-deck-btn:hover {
+  color: var(--text);
+  border-color: var(--text-3);
+}
+
 .rail-foot {
   margin-top: auto;
   display: flex;
@@ -644,6 +760,102 @@ input.field-name.is-editable:focus {
   font-size: 0.85em;
 }
 
+/* ---------- Custom fields bar ---------- */
+
+.fields-bar {
+  margin: 24px 24px 0;
+  max-width: 1152px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.fields-bar-head {
+  margin-bottom: 12px;
+}
+
+.fields-bar-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.field-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.field-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 4px 0 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.field-chip:focus-within {
+  border-color: var(--accent);
+}
+
+.field-chip.is-front {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.chip-side {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+  padding: 0 4px;
+}
+
+.field-chip.is-front .chip-side {
+  color: var(--accent);
+}
+
+.field-chip input {
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  min-width: 40px;
+  padding: 0 2px;
+}
+
+.chip-actions {
+  display: flex;
+  gap: 0;
+}
+
+.chip-actions .icon-btn {
+  width: 20px;
+  height: 22px;
+  font-size: 14px;
+}
+
+.add-field {
+  height: 32px;
+}
+
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin-top: 12px;
+}
+
 .field-row-actions {
   display: flex;
   align-items: flex-start;
@@ -950,6 +1162,128 @@ input.field-name.is-editable:focus {
 
 .code-input {
   resize: vertical;
+}
+
+/* ---------- Macro editor ---------- */
+
+.macro-editor {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.macro-list {
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+.macro-row {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.macro-row.has-error {
+  background: var(--danger-soft);
+}
+
+.macro-fields {
+  display: grid;
+  grid-template-columns: 110px 80px 130px minmax(0, 1fr) 30px;
+  gap: 10px;
+  align-items: end;
+}
+
+.macro-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.macro-fields input:not([type="checkbox"]),
+.macro-fields select,
+.macro-example input {
+  height: 30px;
+  min-width: 0;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  padding: 0 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.macro-fields input:focus,
+.macro-fields select:focus,
+.macro-example input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.macro-fields input:disabled {
+  opacity: 0.45;
+}
+
+.macro-optional-ctl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.macro-optional-ctl input[type="checkbox"] {
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+.macro-delete {
+  align-self: end;
+}
+
+.macro-example {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.macro-example input {
+  width: 200px;
+  flex: none;
+  color: var(--text-2);
+}
+
+.macro-arrow {
+  color: var(--text-3);
+}
+
+.macro-example-out {
+  font-size: 15px;
+}
+
+.macro-example-out .katex-display {
+  margin: 0;
+}
+
+.field-error.inline {
+  margin: 0;
+  padding: 0;
+}
+
+.error-text {
+  color: var(--danger);
+}
+
+.macro-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border-radius: 0 0 var(--radius) var(--radius);
 }
 
 .macro-test {

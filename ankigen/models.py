@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from .latex import MacroDef, normalize_macros
+
 NOTE_TYPES = ("basic", "reversed", "cloze", "custom")
 
 DEFAULT_FIELDS: dict[str, list[str]] = {
@@ -37,11 +39,12 @@ class DeckSpec:
     fields: list[str] = field(default_factory=lambda: list(DEFAULT_FIELDS["basic"]))
     cards: list[Card] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
-    macros: dict[str, str] = field(default_factory=dict)
+    macros: list[MacroDef] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.note_type not in NOTE_TYPES:
             raise ValueError(f"Unknown note type: {self.note_type!r}")
+        self.macros = normalize_macros(self.macros)
         if not self.fields:
             raise ValueError("A note type needs at least one field")
 
@@ -54,7 +57,7 @@ class DeckSpec:
             fields=list(data.get("fields") or DEFAULT_FIELDS.get(note_type, ["Front", "Back"])),
             cards=[Card.from_dict(c) for c in data.get("cards", [])],
             tags=[str(t) for t in data.get("tags", [])],
-            macros={str(k): str(v) for k, v in (data.get("macros") or {}).items()},
+            macros=normalize_macros(data.get("macros")),
         )
 
 

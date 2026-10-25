@@ -3,6 +3,8 @@
 
 import katex from "katex";
 import "katex/contrib/mhchem";
+import type { MacroDef } from "../types";
+import { expandMacros } from "./macros";
 
 type Segment = { kind: "text"; value: string } | { kind: "math"; value: string; display: boolean };
 
@@ -79,16 +81,15 @@ export interface RenderResult {
   errors: string[];
 }
 
-export function renderField(text: string, macros: Record<string, string>): RenderResult {
+export function renderField(text: string, macros: MacroDef[]): RenderResult {
   const errors: string[] = [];
   const html = splitMath(text)
     .map((seg) => {
       if (seg.kind === "text") return renderText(seg.value);
       try {
-        return katex.renderToString(seg.value, {
+        return katex.renderToString(expandMacros(seg.value, macros), {
           displayMode: seg.display,
           throwOnError: true,
-          macros: { ...macros },
           strict: "ignore",
         });
       } catch (e) {
@@ -102,7 +103,7 @@ export function renderField(text: string, macros: Record<string, string>): Rende
 }
 
 /** Pre-export check: an unclosed `$`, or math KaTeX can't parse. */
-export function hasMathProblem(text: string, macros: Record<string, string>): boolean {
+export function hasMathProblem(text: string, macros: MacroDef[]): boolean {
   const unescaped = text.replace(/\\\$/g, "");
   if (!unescaped.includes("$")) return false;
   if (splitMath(unescaped).some((s) => s.kind === "text" && s.value.includes("$"))) return true;

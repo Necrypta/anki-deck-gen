@@ -9,16 +9,27 @@ export interface Card {
 }
 
 export interface Deck {
+  id: string;
   name: string;
   noteType: NoteType;
   fields: string[];
   cards: Card[];
   tags: string[];
+  updatedAt: number;
+}
+
+export interface MacroDef {
+  name: string;
+  /** Total number of arguments, 0–9. */
+  args: number;
+  /** Default for #1 when the first argument is optional (`[…]`), else null. */
+  optional: string | null;
+  body: string;
 }
 
 export interface Settings {
   theme: Theme;
-  macros: Record<string, string>;
+  macros: MacroDef[];
 }
 
 export interface BuildInfo {
@@ -29,8 +40,9 @@ export interface BuildInfo {
 }
 
 export interface Session {
-  version: 1;
-  deck: Deck;
+  version: 2;
+  decks: Deck[];
+  activeDeckId: string;
   settings: Settings;
 }
 

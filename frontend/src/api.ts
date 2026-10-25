@@ -4,7 +4,7 @@
 // browser (`npm run dev`), calls go over HTTP to `python -m ankigen.devserver`
 // through Vite's /api proxy, so the UI can be developed with hot reload.
 
-import type { Deck, ParseResult, Session } from "./types";
+import type { Deck, MacroDef, ParseResult, Session } from "./types";
 
 type Result<T> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -52,7 +52,7 @@ async function call<T>(method: string, ...args: unknown[]): Promise<Result<T>> {
 }
 
 /** Shape the backend's DeckSpec expects. */
-function toSpec(deck: Deck, macros: Record<string, string>) {
+function toSpec(deck: Deck, macros: MacroDef[]) {
   return {
     name: deck.name.trim() || "Untitled",
     note_type: deck.noteType,
@@ -71,15 +71,16 @@ export const api = {
       release: boolean;
       data_dir: string;
       formats: string[];
-      default_macros: Record<string, string>;
+      default_macros: MacroDef[];
     }>("info"),
   parseText: (text: string, fmt: string, options: Record<string, unknown>) =>
     call<ParseResult>("parse_text", text, fmt, options),
   openTextFile: () =>
     call<{ cancelled?: boolean; path?: string; name?: string; text?: string }>("open_text_file"),
-  exportDeck: (deck: Deck, macros: Record<string, string>) =>
+  exportDeck: (deck: Deck, macros: MacroDef[]) =>
     call<{ cancelled?: boolean; path?: string; count?: number }>("export_deck", toSpec(deck, macros)),
   reveal: (path: string) => call<object>("reveal", path),
-  loadSession: () => call<{ session: Session | null }>("load_session"),
+  // Saved sessions may be older shapes; App runs them through migrateSession().
+  loadSession: () => call<{ session: unknown }>("load_session"),
   saveSession: (session: Session) => call<object>("save_session", session),
 };

@@ -64,18 +64,20 @@ de Broglie wavelength	$\lambda = h/p$
 | `\$5` | a literal `$5` |
 | `` `$code$` `` | left untouched |
 
-Built-in physics macros (editable under **Settings → LaTeX macros**):
+Built-in physics macros (edit, add or remove them under **Settings → LaTeX macros**):
 
 | Macro | Expands to |
 | --- | --- |
 | `\vb{E}` | **E** (bold vector) |
 | `\vu{r}` | unit vector r̂ |
-| `\dv{x}{t}` | dx/dt |
-| `\pdv{f}{x}` | ∂f/∂x |
+| `\dv{x}{t}`, `\dv[2]{x}{t}` | dx/dt, d²x/dt² |
+| `\pdv{f}{x}`, `\pdv[2]{f}{x}` | ∂f/∂x, ∂²f/∂x² |
 | `\abs{x}`, `\norm{v}` | \|x\|, ‖v‖ |
 | `\ev{A}` | ⟨A⟩ |
 | `\bra{a}`, `\ket{b}`, `\braket{a}{b}` | Dirac notation |
 | `\grad`, `\curl`, `\divg` | ∇, ∇×, ∇· |
+
+Your own macros can take up to 9 arguments (`#1`…`#9`). With **Optional #1** ticked, the first argument is written in square brackets and can be left out, just like LaTeX's `\newcommand{\name}[n][default]{…}`. For example, a macro `\taylor` with 4 arguments, optional default `n` and definition `\sum_{k=0}^{#1} \frac{#2^{(k)}(#3)}{k!}(#4-#3)^k` lets you write `\taylor[3]{f}{a}{x}`.
 
 `\ce{…}` (mhchem) works in the preview and in Anki 2.1.50+.
 

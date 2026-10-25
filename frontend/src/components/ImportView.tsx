@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { cardsFromParse } from "../lib/deck";
-import { DEFAULT_FIELDS, type Card, type Deck, type ParseResult } from "../types";
+import { DEFAULT_FIELDS, type Card, type Deck, type MacroDef, type ParseResult } from "../types";
 import { Icon } from "./Icon";
 import { MathPreview } from "./MathPreview";
 import { Segmented } from "./Segmented";
@@ -11,7 +11,7 @@ type Separator = "tab" | "pipe" | "semicolon" | "comma";
 
 interface Props {
   deck: Deck;
-  macros: Record<string, string>;
+  macros: MacroDef[];
   onAppend: (cards: Card[]) => void;
   onReplace: (deck: Deck) => void;
   notify: (msg: string, kind?: "error" | "info") => void;
@@ -97,6 +97,7 @@ export function ImportView({ deck, macros, onAppend, onReplace, notify }: Props)
     const fields =
       noteType !== "custom" && sameFields(parsed, DEFAULT_FIELDS[noteType]) ? [...DEFAULT_FIELDS[noteType]] : parsed;
     onReplace({
+      ...deck,
       name: result.deck ?? deck.name,
       noteType,
       fields,
