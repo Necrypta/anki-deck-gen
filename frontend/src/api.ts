@@ -4,7 +4,9 @@
 // browser (`npm run dev`), calls go over HTTP to `python -m ankigen.devserver`
 // through Vite's /api proxy, so the UI can be developed with hot reload.
 
-import type { AiStatus, Deck, JobStatus, MacroDef, ModelRef, ParseResult, Session } from "./types";
+import type { AiStatus, Deck, JobStatus, MacroDef, ModelRef, ParseResult, Session, SourceFile } from "./types";
+
+type Source = SourceFile | { kind: "text"; path: string; name: string; text: string };
 
 type Result<T> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -97,6 +99,12 @@ export const api = {
     source: string;
     model: ModelRef;
   }) => call<{ job: string }>("start_generate", request),
+  openSourceFile: () => call<{ cancelled?: boolean } & Partial<Source>>("open_source_file"),
+  uploadSource: (name: string, dataUrl: string) => call<Source>("upload_source", name, dataUrl),
+  sourceThumbnails: (path: string, pages: number[]) =>
+    call<{ thumbs: Record<string, string> }>("source_thumbnails", path, pages),
+  startRead: (request: { path: string; pages: string; mode: string; model: ModelRef | null }) =>
+    call<{ job: string }>("start_read", request),
   jobStatus: (job: string, since: number) => call<JobStatus>("job_status", job, since),
   cancelJob: (job: string) => call<object>("cancel_job", job),
 };

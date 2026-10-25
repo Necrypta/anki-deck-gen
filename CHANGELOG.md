@@ -5,6 +5,7 @@ Each pull request adds a line under **Unreleased**. Releasing moves those lines 
 ## [Unreleased]
 
 - **Generate cards with AI:** a new **Generate** page turns pasted notes or a `.txt` / `.md` file into suggested cards for the current deck, which you review, edit and add. It uses the deck's note type, fields and your macros, with options for how many cards and what to focus on. Cards can be tagged with their source file.
+- **PDFs, images and screenshots:** open or drop a PDF or image, or paste a screenshot with Ctrl+V, on the Generate page. Pick the pages (with thumbnails), then **Read pages**: a vision model (qwen2.5vl:7b suggested, or Gemini, three pages per request) turns them into editable text with LaTeX before cards are written. PDFs with a text layer can use it instead, with no AI. Readings are cached, so the same pages with the same model come back instantly.
 - **Settings → AI card generation:** finds Ollama, LM Studio, llama.cpp and Jan running on this computer and lists their models, or uses Gemini with a free API key stored in Windows Credential Manager. Suggests qwen3:8b when it's installed.
 
 - **AI bake-off tool** (`ai-bakeoff.exe` in test builds): compares local models (Ollama, LM Studio, llama.cpp, Jan) and optionally Gemini on your own PDF pages, and writes a report with transcriptions, cards, speed and GPU fit. Groundwork for AI card generation.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AiStatus } from "../types";
-import { bareLatex, effectiveWriter, formatElapsed, modelChoices, toDeckCards } from "./ai";
+import { bareLatex, effectiveReader, effectiveWriter, formatElapsed, modelChoices, parsePageRange, toDeckCards } from "./ai";
 import { defaultAiSettings, migrateSession } from "./deck";
 
 const status: AiStatus = {
@@ -81,5 +81,23 @@ describe("settings migration", () => {
     expect(s.settings.ai.writer).toEqual(writer);
     expect(s.settings.ai.density).toBe("few");
     expect(s.settings.ai.focus).toBe("balanced");
+  });
+});
+
+describe("reading pages", () => {
+  it("picks a vision model to read with", () => {
+    const ai = defaultAiSettings();
+    expect(effectiveReader(ai, status)?.model).toBe("qwen2.5vl:7b");
+    const withSuggestion = { ...status, suggested: { ...status.suggested, read: { backend: "ollama", url: "u", model: "x" } } };
+    expect(effectiveReader(ai, withSuggestion)?.model).toBe("x");
+    const textOnly = { ...status, runtimes: [{ ...status.runtimes[0], models: [status.runtimes[0].models[0]] }] };
+    expect(effectiveReader(ai, textOnly)?.model).toBe("gemini-3.8-flash");
+  });
+
+  it("parses page ranges like the backend", () => {
+    expect(parsePageRange("", 3)).toEqual([1, 2, 3]);
+    expect(parsePageRange("1-2, 5, 2", 6)).toEqual([1, 2, 5]);
+    expect(parsePageRange("4-", 6)).toEqual([4, 5, 6]);
+    for (const bad of ["0", "3-1", "9", "a"]) expect(parsePageRange(bad, 6)).toBeNull();
   });
 });

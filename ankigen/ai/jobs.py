@@ -60,6 +60,7 @@ class Job:
                 "cards": p.cards[since:],
                 "card_count": len(p.cards),
                 "warnings": list(p.warnings),
+                "pages": {str(n): t for n, t in sorted(p.pages.items())},
             }
 
 

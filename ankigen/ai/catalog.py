@@ -4,7 +4,9 @@ and turning the user's choice (a model reference) back into a provider."""
 from __future__ import annotations
 
 import os
+import re
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from typing import Any
 
 from . import secrets
@@ -137,6 +139,7 @@ def _fake_status() -> dict[str, Any]:
     }
 
 
+@dataclass
 class FakeProvider(Provider):
     """Answers instantly with one card per paragraph; for the devserver and UI tests."""
 
@@ -153,8 +156,15 @@ class FakeProvider(Provider):
         self, model, prompt, *, system=None, images=(), pdf=None, schema=None, **_
     ) -> ChatResult:
         import json
-        import re
 
+        if images or pdf is not None:
+            pages = [int(n) for n in re.findall(r"<!-- page (\d+) -->", prompt)] or [0]
+            body = "\n\n".join(
+                (f"<!-- page {n} -->\n" if n else "")
+                + f"## Fake page {n or 1}\n\nThe energy is $E = mc^2$ and the momentum is $p = \\hbar k$."
+                for n in dict.fromkeys(pages)
+            )
+            return ChatResult(body, seconds=0.01)
         material = prompt.split("<<<", 1)[-1].rsplit(">>>", 1)[0]
         fields = list(
             (schema or {})

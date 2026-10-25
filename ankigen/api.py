@@ -19,6 +19,7 @@ from typing import Any
 from .ai import catalog, secrets
 from .ai.generate import Request, generate_cards
 from .ai.jobs import Jobs
+from .ai.reading import Reader, ReadRequest, describe_source, save_upload, thumbnails
 from .deck import build_apkg
 from .latex import DEFAULT_MACROS, normalize_macros
 from .models import DeckSpec
@@ -68,8 +69,12 @@ class Api:
         self._window = window
 
     @property
+    def _dir(self) -> Path:
+        return self._data_dir or app_data_dir()
+
+    @property
     def _session_file(self) -> Path:
-        return (self._data_dir or app_data_dir()) / "session.json"
+        return self._dir / "session.json"
 
     @_safe
     def info(self) -> dict[str, Any]:
@@ -196,6 +201,46 @@ class Api:
             raise ValueError("Add some material first")
         job = self._jobs.start(
             lambda job: generate_cards(
+                provider, ref.get("model", ""), req, progress=job.progress, cancel=job.cancel
+            )
+        )
+        return {"job": job.id}
+
+    @_safe
+    def open_source_file(self) -> dict[str, Any]:
+        """Pick a PDF, image, or text/Markdown file for the Generate page."""
+        result = self._window.create_file_dialog(
+            _dialog("OPEN"),
+            file_types=(
+                "Study material (*.pdf;*.png;*.jpg;*.jpeg;*.webp;*.txt;*.md)",
+                "All files (*.*)",
+            ),
+        )
+        if not result:
+            return {"cancelled": True}
+        return describe_source(result[0])
+
+    @_safe
+    def upload_source(self, name: str, data_b64: str) -> dict[str, Any]:
+        """A dropped or pasted file: the page can't pass a path, so it sends the bytes."""
+        info = describe_source(save_upload(self._dir / "uploads", name, data_b64))
+        return {**info, "name": name}  # show the name the user knows, not the stored one
+
+    @_safe
+    def source_thumbnails(self, path: str, pages: list[int]) -> dict[str, Any]:
+        return {"thumbs": {str(n): url for n, url in thumbnails(path, pages[:40]).items()}}
+
+    @_safe
+    def start_read(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Read PDF pages or an image into Markdown in the background."""
+        req = ReadRequest(
+            path=request["path"], pages=request.get("pages", ""), mode=request.get("mode", "ai")
+        )
+        ref = request.get("model") or {}
+        provider = catalog.provider_for(ref, "read") if req.mode == "ai" else None
+        reader = Reader(self._dir / "cache" / "read")
+        job = self._jobs.start(
+            lambda job: reader.run(
                 provider, ref.get("model", ""), req, progress=job.progress, cancel=job.cancel
             )
         )

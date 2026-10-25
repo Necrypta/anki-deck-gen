@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../api";
-import { effectiveWriter } from "../lib/ai";
+import { effectiveReader, effectiveWriter } from "../lib/ai";
 import type { AiSettings as AiSettingsT, AiStatus } from "../types";
 import { ModelSelect } from "./ModelSelect";
 
@@ -23,6 +23,7 @@ export function AiSettings({ ai, status, checking, onAiChange, onRefresh, onGemi
   const running = status?.runtimes.filter((r) => r.status) ?? [];
   const gemini = status?.gemini;
   const writer = effectiveWriter(ai, status);
+  const reader = effectiveReader(ai, status);
 
   const saveKey = async () => {
     setSaving(true);
@@ -67,6 +68,24 @@ export function AiSettings({ ai, status, checking, onAiChange, onRefresh, onGemi
 
       <div className="setting-row">
         <div>
+          <div className="setting-label">Model for reading pages (PDFs, images)</div>
+          <div className="setting-help">
+            Needs a vision model. It turns each page into text with LaTeX before cards are written.
+          </div>
+        </div>
+        <div className="setting-control">
+          <ModelSelect
+            status={status}
+            value={reader}
+            stage="read"
+            label="Model for reading pages"
+            onChange={(r) => onAiChange({ ...ai, reader: r })}
+          />
+        </div>
+      </div>
+
+      <div className="setting-row">
+        <div>
           <div className="setting-label">Local AI</div>
           <div className="setting-help">
             Works with <a href="https://ollama.com/download" target="_blank" rel="noreferrer">Ollama</a> (easiest),{" "}
@@ -98,7 +117,7 @@ export function AiSettings({ ai, status, checking, onAiChange, onRefresh, onGemi
           No local AI found. To set it up: install Ollama, then run these in a terminal (about 5 GB each) and click{" "}
           <b>Check again</b>:
           <pre>{PULLS.join("\n")}</pre>
-          qwen3:8b writes the cards; qwen2.5vl:7b will read PDF pages in the next update.
+          qwen3:8b writes the cards and qwen2.5vl:7b reads PDF pages and images.
         </div>
       )}
       {running.some((r) => r.models.some((m) => m.thinking)) && (

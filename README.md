@@ -25,14 +25,15 @@ Name the deck with `::` to create subdecks, e.g. `Physics::Electromagnetism`. Th
 
 ### Generating cards with AI
 
-Open **Generate**, paste notes or a textbook section (or open a `.txt` / `.md` file), and click **Generate cards**. Suggested cards appear on the right as they're written. Untick or edit any of them, then **Add to deck**. Cards use the current deck's note type and fields, and your LaTeX macros.
+Open **Generate**, then paste notes, open or drop a file (PDF, image, `.txt` or `.md`), or press Ctrl+V to paste a screenshot.
+
+- **PDFs and images** are read first: choose the pages (thumbnails show what you picked) and click **Read pages**. A vision model turns each page into text with LaTeX, which appears in the box for you to check and trim. For PDFs with a text layer you can choose **Text layer** instead: instant, but equations usually come out garbled. Pages that were already read with the same model come back instantly.
+- Then click **Generate cards**. Suggested cards appear on the right as they're written. Untick or edit any of them, then **Add to deck**. Cards use the current deck's note type and fields, and your LaTeX macros.
 
 Set up a model under **Settings → AI card generation**:
 
-- **On this computer (recommended):** install [Ollama](https://ollama.com/download), then run `ollama pull qwen3:8b` (it writes the cards; about 5 GB). The app finds it automatically, and LM Studio, llama.cpp and Jan work too. It's free, private and works offline.
+- **On this computer (recommended):** install [Ollama](https://ollama.com/download), then run `ollama pull qwen3:8b` (writes the cards) and `ollama pull qwen2.5vl:7b` (reads pages); about 5 GB each. The app finds it automatically, and LM Studio, llama.cpp and Jan work too. It's free, private and works offline.
 - **Online:** paste a free [Gemini API key](https://aistudio.google.com/apikey). It gives the best cards, but the free tier can take a few minutes per request. The key is kept in Windows Credential Manager.
-
-PDFs and images (with equations read straight from the page) come in the next update.
 
 There's a ready-made example in [`examples/`](examples): `physics_sample.txt` is the source and `physics_sample.apkg` is the result.
 

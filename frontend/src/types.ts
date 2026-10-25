@@ -140,4 +140,18 @@ export interface JobStatus {
   cards: GeneratedCard[];
   card_count: number;
   warnings: string[];
+  /** Reading jobs: page number → Markdown. */
+  pages: Record<string, string>;
 }
+
+/** A PDF or image picked on the Generate page (text files go straight into the material). */
+export interface SourceFile {
+  kind: "pdf" | "image";
+  path: string;
+  name: string;
+  pages: number;
+  /** Pages with a usable text layer (none for scans and images). */
+  text_pages: number[];
+}
+
+export type ReadMode = "ai" | "text";

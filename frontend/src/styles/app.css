@@ -1664,3 +1664,121 @@ input.field-name.is-editable:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---------- Source file (PDF / image) ---------- */
+
+.source-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.source-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.source-head .file-name {
+  font-weight: 500;
+  flex: 0 1 auto;
+}
+.source-head .icon-btn {
+  margin-left: auto;
+  flex: none;
+}
+.source-head > .muted {
+  flex: none;
+}
+.source-pages {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.source-pages input {
+  width: 160px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.source-pages input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+.source-pages .is-error {
+  color: var(--danger);
+}
+.thumb-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.thumb-strip figure {
+  margin: 0;
+  flex: none;
+  width: 64px;
+  text-align: center;
+}
+.thumb-strip img,
+.thumb-blank {
+  display: block;
+  width: 64px;
+  height: 86px;
+  object-fit: cover;
+  object-position: top;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-2);
+}
+.thumb-strip figure.is-read img {
+  border-color: var(--accent);
+}
+.thumb-strip figcaption {
+  font-size: 11px;
+  color: var(--text-3);
+}
+.thumb-more {
+  align-self: center;
+  flex: none;
+}
+.source-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+.source-options .option,
+.source-options label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.source-options label.grow {
+  flex: 1;
+  min-width: 200px;
+}
+.source-warn {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.generate .import-text,
+.generate .material-preview {
+  min-height: 140px;
+}
+.generate .import-source {
+  overflow-y: auto;
+}

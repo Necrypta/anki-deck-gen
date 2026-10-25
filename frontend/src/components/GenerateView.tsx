@@ -1,13 +1,34 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import { bareLatex, describeRef, effectiveWriter, formatElapsed, isLocal, toDeckCards } from "../lib/ai";
+import {
+  bareLatex,
+  describeRef,
+  effectiveReader,
+  effectiveWriter,
+  formatElapsed,
+  isLocal,
+  toDeckCards,
+} from "../lib/ai";
 import { hasMathProblem } from "../lib/math";
-import type { AiSettings, AiStatus, Card, Deck, Density, Focus, GeneratedCard, JobStatus, MacroDef } from "../types";
+import type {
+  AiSettings,
+  AiStatus,
+  Card,
+  Deck,
+  Density,
+  Focus,
+  GeneratedCard,
+  JobStatus,
+  MacroDef,
+  ReadMode,
+  SourceFile,
+} from "../types";
 import { FieldInput } from "./FieldInput";
 import { Icon } from "./Icon";
 import { MathPreview } from "./MathPreview";
 import { ModelSelect } from "./ModelSelect";
 import { Segmented } from "./Segmented";
+import { SourceCard } from "./SourceCard";
 
 export interface ReviewCard extends GeneratedCard {
   key: string;
@@ -21,9 +42,42 @@ export interface GenerateState {
   jobId: string | null;
   job: Omit<JobStatus, "cards"> | null;
   cards: ReviewCard[];
+  /** A PDF or image to read into the material first. */
+  file: SourceFile | null;
+  pageSpec: string;
+  readMode: ReadMode;
+  readJobId: string | null;
+  readJob: Omit<JobStatus, "cards"> | null;
 }
 
-export const emptyGenerateState = (): GenerateState => ({ material: "", source: "", jobId: null, job: null, cards: [] });
+export const emptyGenerateState = (): GenerateState => ({
+  material: "",
+  source: "",
+  jobId: null,
+  job: null,
+  cards: [],
+  file: null,
+  pageSpec: "",
+  readMode: "ai",
+  readJobId: null,
+  readJob: null,
+});
+
+const startingJob = (id: string): Omit<JobStatus, "cards"> => ({
+  id,
+  state: "running",
+  error: "",
+  done: 0,
+  total: 0,
+  message: "Starting…",
+  elapsed: 0,
+  card_count: 0,
+  warnings: [],
+  pages: {},
+});
+
+const TEXT_FILE = /\.(txt|md|markdown|tex)$/i;
+const READABLE_FILE = /\.(pdf|png|jpe?g|webp|bmp|gif|tiff?)$/i;
 
 interface Props {
   deck: Deck;
@@ -45,7 +99,9 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
   const [dragging, setDragging] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const writer = effectiveWriter(ai, status);
+  const reader = effectiveReader(ai, status);
   const running = state.job?.state === "running";
+  const reading = state.readJob?.state === "running";
   const cardCount = useRef(state.cards.length);
   cardCount.current = state.cards.length;
 
@@ -81,24 +137,95 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
     };
   }, [state.jobId, running, onState, notify]);
 
+  // Poll the reading job; when it finishes, its pages become the material.
+  useEffect(() => {
+    if (!state.readJobId || !reading) return;
+    const jobId = state.readJobId;
+    let stop = false;
+    const tick = async () => {
+      const res = await api.jobStatus(jobId, 0);
+      if (stop) return;
+      if (!res.ok) {
+        onState((s) => ({ ...s, readJob: s.readJob && { ...s.readJob, state: "error", error: res.error } }));
+        return notify(res.error, "error");
+      }
+      const { cards: _cards, ...job } = res;
+      const text = Object.entries(job.pages)
+        .sort(([a], [b]) => Number(a) - Number(b))
+        .map(([, t]) => t.trim())
+        .filter(Boolean)
+        .join("\n\n");
+      onState((s) => (s.readJobId !== jobId ? s : { ...s, readJob: job, material: job.state === "running" ? s.material : text || s.material }));
+      if (job.state === "error") notify(job.error, "error");
+      else if (job.state === "done") {
+        const n = Object.keys(job.pages).length;
+        notify(`Read ${n} page${n === 1 ? "" : "s"}. Check the text, then generate cards.`);
+      }
+      if (job.state === "running") timer = window.setTimeout(tick, POLL_MS);
+    };
+    let timer = window.setTimeout(tick, 200);
+    return () => {
+      stop = true;
+      clearTimeout(timer);
+    };
+  }, [state.readJobId, reading, onState, notify]);
+
   const setMaterial = (material: string, source = state.source) => onState((s) => ({ ...s, material, source }));
 
-  const openFile = async () => {
-    const res = await api.openTextFile();
+  const takeSource = (res: Awaited<ReturnType<typeof api.uploadSource>>) => {
     if (!res.ok) return notify(res.error, "error");
-    if (res.cancelled || res.text === undefined) return;
-    setMaterial(res.text, res.name ?? "");
+    if (res.kind === "text") {
+      onState((s) => ({ ...s, file: null, material: res.text, source: res.name }));
+    } else {
+      const firstPages = res.kind === "pdf" && res.pages > 5 ? "1-5" : "";
+      onState((s) => ({ ...s, file: res, source: res.name, pageSpec: firstPages, readJob: null, readJobId: null }));
+    }
+  };
+
+  const openFile = async () => {
+    const res = await api.openSourceFile();
+    if (res.ok && res.cancelled) return;
+    takeSource(res as Awaited<ReturnType<typeof api.uploadSource>>);
+  };
+
+  const uploadFile = async (file: File) => {
+    if (TEXT_FILE.test(file.name)) return setMaterial(await file.text(), file.name);
+    if (!READABLE_FILE.test(file.name)) return notify("Drop a PDF, an image, or a .txt / .md file", "error");
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result));
+      r.onerror = () => reject(r.error);
+      r.readAsDataURL(file);
+    });
+    takeSource(await api.uploadSource(file.name, dataUrl));
   };
 
   const onDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
     const file = e.dataTransfer.files[0];
-    if (!file) return;
-    if (!/\.(txt|md|markdown|tex)$/i.test(file.name)) {
-      return notify("For now, drop a .txt or .md file. PDFs and images come in the next update.", "error");
-    }
-    setMaterial(await file.text(), file.name);
+    if (file) await uploadFile(file);
+  };
+
+  // Ctrl+V a screenshot anywhere on the left pane.
+  const onPaste = async (e: React.ClipboardEvent) => {
+    const image = [...e.clipboardData.files].find((f) => f.type.startsWith("image/"));
+    if (!image) return;
+    e.preventDefault();
+    const ext = image.type.split("/")[1] || "png";
+    await uploadFile(new File([image], `Pasted screenshot.${ext}`, { type: image.type }));
+  };
+
+  const read = async () => {
+    if (!state.file) return;
+    const res = await api.startRead({
+      path: state.file.path,
+      pages: state.file.kind === "pdf" ? state.pageSpec : "",
+      mode: state.readMode,
+      model: state.readMode === "ai" ? reader : null,
+    });
+    if (!res.ok) return notify(res.error, "error");
+    onState((s) => ({ ...s, readJobId: res.job, readJob: startingJob(res.job) }));
   };
 
   const generate = async () => {
@@ -114,11 +241,7 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
       model: writer,
     });
     if (!res.ok) return notify(res.error, "error");
-    onState((s) => ({
-      ...s,
-      jobId: res.job,
-      job: { id: res.job, state: "running", error: "", done: 0, total: 0, message: "Starting…", elapsed: 0, card_count: 0, warnings: [] },
-    }));
+    onState((s) => ({ ...s, jobId: res.job, job: startingJob(res.job) }));
   };
 
   const cancel = async () => {
@@ -151,6 +274,7 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
         }}
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
+        onPaste={onPaste}
       >
         <div className="pane-head">
           <Segmented
@@ -163,7 +287,7 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
             ]}
           />
           <div className="toolbar-right">
-            {state.source && (
+            {state.source && !state.file && (
               <span className="file-name muted small" title={state.source}>
                 {state.source}
               </span>
@@ -173,6 +297,26 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
             </button>
           </div>
         </div>
+
+        {state.file && (
+          <SourceCard
+            file={state.file}
+            pageSpec={state.pageSpec}
+            mode={state.readMode}
+            job={state.readJob}
+            reader={reader}
+            status={status}
+            onPageSpec={(pageSpec) => onState((s) => ({ ...s, pageSpec }))}
+            onMode={(readMode) => onState((s) => ({ ...s, readMode }))}
+            onReader={(r) => onAiChange({ ...ai, reader: r })}
+            onRead={read}
+            onStop={() => state.readJobId && api.cancelJob(state.readJobId)}
+            onRemove={() => onState((s) => ({ ...s, file: null, readJob: null, readJobId: null }))}
+          />
+        )}
+        {state.readJob && state.readJob.state !== "running" && state.readJob.warnings.length > 0 && (
+          <div className="source-warn small">{state.readJob.warnings.join(" ")}</div>
+        )}
 
         {preview ? (
           <div className="material-preview">
@@ -185,8 +329,10 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
             spellCheck={false}
             onChange={(e) => setMaterial(e.target.value)}
             placeholder={
-              "Paste notes or a textbook section, or drop a .txt / .md file here.\n\n" +
-              "Math in $…$ and $$…$$ works best. Delete anything you don't want cards for, like exercises."
+              state.file
+                ? "Click Read pages above; the text appears here for you to check and trim."
+                : "Paste notes, or drop a PDF, an image or a .txt / .md file here. Ctrl+V pastes a screenshot.\n\n" +
+                  "Math in $…$ and $$…$$ works best. Delete anything you don't want cards for, like exercises."
             }
           />
         )}
@@ -235,7 +381,7 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
               Stop
             </button>
           ) : (
-            <button type="button" className="primary-btn" onClick={generate} disabled={!words || !writer}>
+            <button type="button" className="primary-btn" onClick={generate} disabled={!words || !writer || reading}>
               <Icon name="sparkle" /> Generate cards
             </button>
           )}

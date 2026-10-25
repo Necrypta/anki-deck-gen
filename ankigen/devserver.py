@@ -30,6 +30,9 @@ class DevApi(Api):
     def open_text_file(self):  # type: ignore[override]
         return {"ok": False, "error": "No file dialog in browser mode: drop the file instead"}
 
+    def open_source_file(self):  # type: ignore[override]
+        return {"ok": False, "error": "No file dialog in browser mode: drop the file instead"}
+
     def reveal(self, path):  # type: ignore[override]
         return {"ok": True}
 

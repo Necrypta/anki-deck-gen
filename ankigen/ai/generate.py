@@ -85,6 +85,7 @@ class Progress:
     message: str = ""
     cards: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    pages: dict[int, str] = field(default_factory=dict)  # reading jobs: page → Markdown
 
 
 def generate_cards(

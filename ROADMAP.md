@@ -8,7 +8,7 @@ The shared backend is in `ankigen/ai/`. It's runtime- and model-agnostic: Ollama
 - **Text and Markdown → cards (done in 0.3):**
   - a Generate page: source → editable Markdown → options → review and add;
   - Settings → AI, with detected runtimes, model pickers and a Gemini key stored in Windows Credential Manager.
-- **PDFs and images:**
+- **PDFs and images (done in 0.3):**
   - page-range picker;
   - text layer or visual reading for scans and equations;
   - paste a screenshot.
