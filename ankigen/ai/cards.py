@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from ..latex import MacroDef
-from .text import normalize_math, parse_json_lenient
+from .text import normalize_math, parse_json_lenient, tidy_math
 
 ANSWER_ALIASES = ("answer", "back", "a")
 QUESTION_ALIASES = ("question", "front", "q", "text")
@@ -57,7 +57,7 @@ def parse_cards(
             if value is None and i < 2:
                 aliases = QUESTION_ALIASES if i == 0 else ANSWER_ALIASES
                 value = next((lower[a] for a in aliases if a in lower), None)
-            card[f] = normalize_math(_as_text(value)).strip()
+            card[f] = tidy_math(normalize_math(_as_text(value))).strip()
         if card[fields[0]]:
             cards.append(card)
     return cards

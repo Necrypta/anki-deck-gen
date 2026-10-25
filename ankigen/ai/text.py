@@ -67,9 +67,55 @@ def _last_nonblank(lines: list[str]) -> str:
     return next((x.strip() for x in reversed(lines) if x.strip()), "")
 
 
+_MATH_SEG = re.compile(r"\$\$.+?\$\$|(?<!\\)\$(?:\\.|[^$\\\n])+\$", re.DOTALL)
+_SECTION = re.compile(r"^[ \t]*\\(sub)?(sub)?section\*?\{(.+?)\}[ \t]*$", re.MULTILINE)
+_ENV = re.compile(
+    r"\\begin\{(aligned|align\*?|equation\*?|gather\*?|gathered|multline\*?|eqnarray\*?)\}"
+    r".*?\\end\{\1\}",
+    re.DOTALL,
+)
+
+
+def _outside_math(text: str, fix) -> str:
+    """Apply ``fix`` only to the parts of ``text`` that aren't already math."""
+    out, last = [], 0
+    for m in _MATH_SEG.finditer(text):
+        out += [fix(text[last : m.start()]), m.group(0)]
+        last = m.end()
+    out.append(fix(text[last:]))
+    return "".join(out)
+
+
+def latex_to_markdown(text: str) -> str:
+    r"""Fix LaTeX that vision models leave in Markdown: ``\subsection*{X}`` becomes
+    a heading, and a bare ``\begin{aligned}…`` block gets the ``$$`` it needs."""
+
+    def fix(part: str) -> str:
+        part = _SECTION.sub(
+            lambda m: "#" * (2 + bool(m.group(1)) + bool(m.group(2))) + " " + m.group(3), part
+        )
+        return _ENV.sub(lambda m: f"\n$$\n{m.group(0).strip()}\n$$\n", part)
+
+    return _outside_math(text, fix)
+
+
+def tidy_math(text: str) -> str:
+    r"""Trim padding inside inline math (``$ x $`` → ``$x$``) and drop ``\text{ }`` spacers."""
+
+    def trim(m: re.Match) -> str:
+        seg = m.group(0)
+        if seg.startswith("$$"):
+            return seg
+        inner = re.sub(r"\\text\{\s*\}", " ", seg[1:-1]).strip()
+        return f"${re.sub(r'  +', ' ', inner)}$" if inner else seg
+
+    return _MATH_SEG.sub(trim, text)
+
+
 def clean_markdown(text: str) -> str:
     text = collapse_repeats(strip_special_tokens(strip_fences(strip_think(text))))[0]
-    return normalize_math(re.sub(r"\n{3,}", "\n\n", text)).strip()
+    text = latex_to_markdown(normalize_math(text))
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
 # LaTeX commands whose first letter is also a JSON escape (\b \f \n \r \t \u).
@@ -183,3 +229,19 @@ def _close_truncated(body: str) -> str | None:
     end, open_stack = best
     closers = "".join("]" if s == "[" else "}" for s in reversed(open_stack))
     return body[: end + 1] + closers
+
+
+def split_page_marks(text: str, pages: list[int]) -> dict[int, str]:
+    """Split a whole-document transcription on ``<!-- page N -->`` markers.
+
+    Text before the first marker, or everything when there are no markers,
+    goes to the first page.
+    """
+    out = {n: "" for n in pages}
+    parts = re.split(r"<!--\s*page\s+(\d+)\s*-->", text)
+    out[pages[0]] = parts[0].strip()
+    for num, body in zip(parts[1::2], parts[2::2]):
+        n = int(num)
+        key = n if n in out else pages[0]
+        out[key] = (out[key] + "\n\n" + body.strip()).strip()
+    return out

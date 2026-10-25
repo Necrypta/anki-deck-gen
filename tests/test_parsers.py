@@ -77,8 +77,10 @@ def test_delimited_tab():
 
 def test_delimited_pipe_and_extra_fields():
     r = parse_text(
-        "#separator:pipe\nF | $F=ma$ | N\nE | $E=mc^2$\n", "delimited",
-        separator="pipe", fields=["Front", "Back", "Extra"],
+        "#separator:pipe\nF | $F=ma$ | N\nE | $E=mc^2$\n",
+        "delimited",
+        separator="pipe",
+        fields=["Front", "Back", "Extra"],
     )
     assert len(r.cards) == 2
     assert r.cards[0].fields["Extra"] == "N"

@@ -3,6 +3,7 @@ import io
 import json
 import sys
 import threading
+import types
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -196,6 +197,8 @@ class Stub:
         self.fail_429 = 0
         self.reject_schema = False
         self.only_thinking = False
+        self.reject_thinking = False
+        self.gemini_reply = None
         self.reply = '{"cards": [{"Front": "Q", "Back": "A"}]}'
         stub = self
 
@@ -303,6 +306,10 @@ class Stub:
                         }
                     )
                 if p.endswith(":generateContent"):
+                    config = body["generationConfig"]
+                    if stub.reject_thinking and "thinkingConfig" in config:
+                        msg = {"error": {"message": "thinking level is not supported"}}
+                        return self._send(msg, 400)
                     if stub.fail_429:
                         stub.fail_429 -= 1
                         return self._send(
@@ -315,13 +322,13 @@ class Stub:
                                     "content": {
                                         "parts": [
                                             {"text": "plan", "thought": True},
-                                            {"text": stub.reply},
+                                            {"text": stub.gemini_reply or stub.reply},
                                         ]
                                     },
                                     "finishReason": "STOP",
                                 }
                             ],
-                            "usageMetadata": {"candidatesTokenCount": 12},
+                            "usageMetadata": {"candidatesTokenCount": 12, "thoughtsTokenCount": 30},
                         }
                     )
                 self._send({"error": "not found"}, 404)
@@ -346,7 +353,7 @@ class Stub:
 
 @pytest.fixture
 def stub(monkeypatch):
-    monkeypatch.setattr(aihttp, "_retry_delay", lambda e, attempt: 0)
+    monkeypatch.setattr(aihttp, "_retry_delay", lambda *a: 0)
     s = Stub()
     yield s
     s.server.shutdown()
@@ -541,3 +548,87 @@ def test_bakeoff_gemini_auto(stub):
     bo = _bakeoff()
     args = bo.argparse.Namespace(gemini=f"{stub.url}/v1beta", gemini_key="K", num_ctx=8192)
     assert bo.Runtimes(args).parse("gemini/auto").id == "gemini-2.5-flash"
+
+
+# ------------------------------------------------------------- second bake-off run
+
+
+def test_gemini_thinking_config_and_fallback(stub):
+    from ankigen.ai.providers import gemini_thinking
+
+    assert gemini_thinking("gemini-3.8-flash") == {"thinkingLevel": "low"}
+    assert gemini_thinking("gemini-2.5-flash") == {"thinkingBudget": 0}
+    assert gemini_thinking("gemini-2.5-pro") is None
+    g = Gemini(f"{stub.url}/v1beta", api_key="K")
+    r = g.chat("gemini-3.8-flash", "x")
+    assert stub.requests[-1][1]["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "low"}
+    assert r.thinking_tokens == 30
+    stub.reject_thinking = True
+    assert g.chat("gemini-9.0-flash", "x").text == stub.reply
+    assert "thinkingConfig" not in stub.requests[-1][1]["generationConfig"]
+    n = len(stub.requests)
+    g.chat("gemini-9.0-flash", "again")  # remembered: no failing request first
+    assert len(stub.requests) == n + 1
+
+
+def test_retry_callback_and_retry_delay(stub, monkeypatch):
+    waits = []
+    stub.fail_429 = 2
+    g = Gemini(f"{stub.url}/v1beta", api_key="K", on_retry=lambda status, s: waits.append(status))
+    g.chat("gemini-3.8-flash", "x")
+    assert waits == [429, 429]
+
+    E = types.SimpleNamespace(headers={"Retry-After": "3"})
+
+    monkeypatch.undo()  # the real _retry_delay
+    assert aihttp._retry_delay(E, 0, '{"retryDelay": "23s"}') == 24
+    assert aihttp._retry_delay(E, 0, "") >= 3
+    assert aihttp._retry_delay(E, 0, '{"retryDelay": "900s"}') == 60
+
+
+def test_latex_to_markdown_and_tidy_math():
+    from ankigen.ai.text import tidy_math
+
+    src = "a\n\n\\subsection*{8.4.3 Legendre}\n\nThis yields\n\n\\begin{aligned} k &= 1 \\end{aligned}\n\nend"
+    out = clean_markdown(src)
+    assert "a\n\n### 8.4.3 Legendre\n\nThis yields" in out
+    assert "$$\n\\begin{aligned} k &= 1 \\end{aligned}\n$$" in out
+    inside = "$$\n\\begin{aligned} a \\end{aligned}\n$$"
+    assert clean_markdown(inside) == inside  # already math: untouched
+    assert (
+        tidy_math(r"is $ H = 2x\text{ }H_n $ and $a$ and $$ x $$")
+        == r"is $H = 2x H_n$ and $a$ and $$ x $$"
+    )
+    reply = '{"cards": [{"Front": "Q", "Back": "$ x $"}]}'
+    assert parse_cards(reply, ["Front", "Back"])[0]["Back"] == "$x$"
+
+
+def test_split_page_marks_and_prompts():
+    from ankigen.ai.prompts import example_card, read_pdf_user
+    from ankigen.ai.text import split_page_marks
+
+    text = "intro\n<!-- page 12 -->\nfirst\n<!-- page 13 -->\nsecond\n<!-- page 99 -->\nstray"
+    assert split_page_marks(text, [12, 13]) == {12: "intro\n\nfirst\n\nstray", 13: "second"}
+    assert split_page_marks("no marks", [1, 2]) == {1: "no marks", 2: ""}
+    assert "<!-- page 12 -->" in read_pdf_user([12, 13])
+    assert json.loads(example_card(["Q", "A", "Units"]))["Units"] == ""
+    assert "{{c1::" in json.loads(example_card(["Text", "Extra"], "cloze"))["Text"]
+    system, _ = card_messages("x", ["Front", "Back"])
+    assert "never restate the question" in system and "de Broglie" in system
+
+
+def test_bakeoff_gemini_reads_whole_pdf_in_one_request(stub, tmp_path):
+    pdf = tmp_path / "c.pdf"
+    _text_pdf(pdf, ["one " * 80, "two " * 80, "three " * 80])
+    stub.gemini_reply = "<!-- page 2 -->\nPage two $x$\n<!-- page 3 -->\nPage three"
+    out = tmp_path / "r"
+    args = [str(pdf), "--pages", "2-3", "--gemini", f"{stub.url}/v1beta", "--gemini-key", "K"]
+    args += ["--read", "gemini/gemini-3.8-flash", "--skip-cards", "--out", str(out), "--no-open"]
+    assert _bakeoff().main([*args, "--dpi", "30"]) == 0
+    calls = [b for p, b, _ in stub.requests if p.endswith(":generateContent")]
+    assert len(calls) == 1
+    assert calls[0]["contents"][0]["parts"][1]["inline_data"]["mime_type"] == "application/pdf"
+    rec = json.loads((out / "results.json").read_text("utf-8"))["read"][0]
+    assert rec["pages"]["2"]["text"] == "Page two $x$"
+    assert rec["pages"]["3"]["text"] == "Page three"
+    assert "one request" in (out / "summary.md").read_text("utf-8")

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from ..latex import MacroDef
 
 READ_SYSTEM = """\
@@ -13,10 +15,23 @@ Rules:
 lines. Never use \\( \\) or \\[ \\]. Keep equation numbers as \\tag{n} inside the display math.
 - Keep headings (#, ##, ###), lists, bold and italics. Tables become Markdown tables.
 - For a figure or diagram write one line: [Figure: caption or a short description].
-- Leave out running headers, footers and page numbers.
+- Leave out running headers, footers, page numbers and margin notes (short side labels such \
+as "summary of properties").
+- Copy symbols exactly: Greek letters as \\nu, \\mu, \\alpha… (never v for \\nu), primes, \\hbar.
 - Output only the Markdown, with no commentary and no code fences."""
 
 READ_USER = "Transcribe this page."
+PAGE_MARK = "<!-- page {n} -->"
+
+
+def read_pdf_user(pages: list[int]) -> str:
+    """For backends that take the whole PDF at once (Gemini): one request, split after."""
+    marks = ", ".join(PAGE_MARK.format(n=n) for n in pages)
+    return (
+        f"This PDF has {len(pages)} page(s). Transcribe every page in order. Start each page "
+        f"with its marker on its own line ({marks}), using the original page numbers."
+    )
+
 
 # Dedicated OCR models (DeepSeek-OCR, olmOCR, Nanonets-OCR…) are trained on a
 # fixed instruction and ignore long system prompts.
@@ -41,13 +56,17 @@ Rules:
 question would otherwise be ambiguous.
 - Prefer precise questions ("What is…", "State…", "Write the equation for…", "Why does…"). \
 Avoid yes/no questions and answers that list more than three items.
-- Keep answers short. Put supporting detail in an extra field if there is one.
-- Use LaTeX for ALL mathematics: inline $...$, display $$...$$. Never use \\( \\) or \\[ \\].
+- Keep answers short and never restate the question: give just the fact, formula or reason. \
+Put supporting detail in an extra field if there is one.
+- Use LaTeX for ALL mathematics: inline $...$, display $$...$$. Never use \\( \\) or \\[ \\]. \
+Write $x$ not $ x $, and no \\text{{ }} spacers.
 - Use only facts from the material. Do not invent values, names or results.
 {macros}
 {note_type}
 Reply with JSON only, in exactly this shape:
-{shape}"""
+{shape}
+Example of one good card (a different topic, for style only):
+{example}"""
 
 
 def is_ocr_model(model: str) -> bool:
@@ -103,6 +122,20 @@ def card_shape(fields: list[str]) -> str:
     return f'{{"cards": [{{{inner}}}, ...]}}'
 
 
+def example_card(fields: list[str], note_type: str = "basic") -> str:
+    if note_type == "cloze":
+        values = [
+            "The de Broglie wavelength of a particle with momentum $p$ is {{c1::$\\lambda = h/p$}}."
+        ]
+    else:
+        values = [
+            "What is the de Broglie wavelength of a particle with momentum $p$?",
+            "$\\lambda = h/p$",
+        ]
+    card = {f: (values[i] if i < len(values) else "") for i, f in enumerate(fields)}
+    return json.dumps(card, ensure_ascii=False)
+
+
 def target_count(material: str, density: str = "normal") -> int:
     words = len(material.split())
     return max(1, min(40, round(words / DENSITY_WORDS.get(density, 110))))
@@ -123,6 +156,7 @@ def card_messages(
         macros=macro_rules(macros or []),
         note_type=note_type_rules(note_type, fields),
         shape=card_shape(fields),
+        example=example_card(fields, note_type),
     )
     user = [
         f"Write about {target_count(material, density)} cards. Focus on {FOCUS.get(focus, FOCUS['balanced'])}.",

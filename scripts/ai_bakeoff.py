@@ -37,7 +37,13 @@ if not getattr(sys, "frozen", False):
 
 from ankigen.ai.cards import bare_latex, card_schema, parse_cards
 from ankigen.ai.http import AiError, request_json
-from ankigen.ai.prompts import card_messages, is_ocr_model, read_messages
+from ankigen.ai.prompts import (
+    READ_SYSTEM,
+    card_messages,
+    is_ocr_model,
+    read_messages,
+    read_pdf_user,
+)
 from ankigen.ai.providers import (
     GEMINI_URL,
     ModelInfo,
@@ -52,9 +58,10 @@ from ankigen.ai.sources import (
     load_pdf,
     parse_page_range,
     pdf_page_count,
+    pdf_subset,
     source_kind,
 )
-from ankigen.ai.text import clean_markdown, collapse_repeats, strip_special_tokens
+from ankigen.ai.text import clean_markdown, collapse_repeats, split_page_marks, strip_special_tokens
 from ankigen.latex import DEFAULT_MACROS
 
 # Candidates for an 8 GB GPU. Tags change over time: missing ones are skipped
@@ -104,6 +111,7 @@ class Runtimes:
         self.args = args
         self._providers: dict[str, Provider] = {}
         self._models: dict[str, list[ModelInfo]] = {}
+        self.retries = 0
 
     def provider(self, runtime: str) -> Provider:
         if runtime not in RUNTIME_URLS:
@@ -120,8 +128,15 @@ class Runtimes:
                 kw["api_key"] = self.args.openai_key
             if runtime == "ollama":
                 kw["num_ctx"] = self.args.num_ctx
-            self._providers[runtime] = make_provider(kind, url, name, **kw)
+            provider = make_provider(kind, url, name, **kw)
+            provider.on_retry = self._retrying
+            self._providers[runtime] = provider
         return self._providers[runtime]
+
+    def _retrying(self, status: int, seconds: float) -> None:
+        self.retries += 1
+        why = "rate limited" if status == 429 else f"server busy (HTTP {status})"
+        print(f"[{why}, waiting {seconds:.0f}s] ", end="", flush=True)
 
     def models(self, runtime: str) -> list[ModelInfo]:
         if runtime not in self._models:
@@ -262,40 +277,71 @@ def thumb(png: bytes, width: int = 760) -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
-def run_read(models: list[Model], pages: list[Page]) -> list[dict]:
+def _page_record(r, text: str, seconds: float) -> dict:
+    issues = []
+    if collapse_repeats(strip_special_tokens(text))[1]:
+        issues.append("looped")
+    if strip_special_tokens(text) != text:
+        issues.append("leaked tokens")
+    if r.truncated:
+        issues.append("hit token limit")
+    tps = r.tokens_per_second
+    return {
+        "text": clean_markdown(text),
+        "seconds": round(seconds, 1),
+        "tokens": r.output_tokens,
+        "thinking_tokens": r.thinking_tokens,
+        "tps": round(tps, 1) if tps else None,
+        "issues": issues,
+    }
+
+
+def run_read(rt: Runtimes, models: list[Model], pages: list[Page], pdf: Path | None) -> list[dict]:
     results = []
     for model in models:
         print(f"\n> Reading with {model.label}")
         system, user = read_messages(model.id)
         rec: dict = {"model": model.label, "pages": {}, "load": 0.0}
-        for page in pages:
-            print(f"    page {page.number} ... ", end="", flush=True)
+        retries_before = rt.retries
+        if model.runtime == "gemini" and pdf is not None:
+            # Gemini reads PDFs natively: one request for all pages, as the app will do.
+            numbers = [p.number for p in pages]
+            print(f"    pages {numbers[0]}-{numbers[-1]} in one request ... ", end="", flush=True)
             try:
                 r = model.provider.chat(
-                    model.id, user, system=system, images=[page.image], temperature=0.0
+                    model.id,
+                    read_pdf_user(numbers),
+                    system=READ_SYSTEM,
+                    pdf=pdf_subset(pdf, numbers),
+                    temperature=0.0,
                 )
             except AiError as e:
                 print(f"failed: {e}")
-                rec["pages"][page.number] = {"error": str(e)}
-                continue
-            rec["load"] += r.load_seconds
-            tps = r.tokens_per_second
-            issues = []
-            if collapse_repeats(strip_special_tokens(r.text))[1]:
-                issues.append("looped")
-            if strip_special_tokens(r.text) != r.text:
-                issues.append("leaked tokens")
-            if r.truncated:
-                issues.append("hit token limit")
-            rec["pages"][page.number] = {
-                "text": clean_markdown(r.text),
-                "seconds": round(r.seconds, 1),
-                "tokens": r.output_tokens,
-                "tps": round(tps, 1) if tps else None,
-                "issues": issues,
-            }
-            note = f" ({', '.join(issues)})" if issues else ""
-            print(f"{r.seconds:.1f}s" + (f", {tps:.0f} tok/s" if tps else "") + note)
+                rec["pages"] = {n: {"error": str(e)} for n in numbers}
+            else:
+                print(f"{r.seconds:.1f}s")
+                rec["whole_pdf"] = round(r.seconds, 1)
+                for n, text in split_page_marks(r.text, numbers).items():
+                    rec["pages"][n] = _page_record(r, text, r.seconds / len(numbers))
+                    rec["pages"][n]["tokens"] = None  # only known for the whole request
+        else:
+            for page in pages:
+                print(f"    page {page.number} ... ", end="", flush=True)
+                try:
+                    r = model.provider.chat(
+                        model.id, user, system=system, images=[page.image], temperature=0.0
+                    )
+                except AiError as e:
+                    print(f"failed: {e}")
+                    rec["pages"][page.number] = {"error": str(e)}
+                    continue
+                rec["load"] += r.load_seconds
+                rec["pages"][page.number] = _page_record(r, r.text, r.seconds)
+                issues = rec["pages"][page.number]["issues"]
+                note = f" ({', '.join(issues)})" if issues else ""
+                tps = r.tokens_per_second
+                print(f"{r.seconds:.1f}s" + (f", {tps:.0f} tok/s" if tps else "") + note)
+        rec["retries"] = rt.retries - retries_before
         rec["gpu"] = gpu_share(model)
         ok = [p for p in rec["pages"].values() if "error" not in p]
         rec["avg_seconds"] = round(sum(p["seconds"] for p in ok) / len(ok), 1) if ok else None
@@ -306,13 +352,14 @@ def run_read(models: list[Model], pages: list[Page]) -> list[dict]:
     return results
 
 
-def run_cards(models: list[Model], material: str) -> list[dict]:
+def run_cards(rt: Runtimes, models: list[Model], material: str) -> list[dict]:
     system, user = card_messages(material, FIELDS, macros=DEFAULT_MACROS)
     schema = card_schema(FIELDS)
     results = []
     for model in models:
         print(f"\n> Writing cards with {model.label} ... ", end="", flush=True)
         rec: dict = {"model": model.label}
+        retries_before = rt.retries
         try:
             r = model.provider.chat(model.id, user, system=system, schema=schema, temperature=0.3)
         except AiError as e:
@@ -328,6 +375,7 @@ def run_cards(models: list[Model], material: str) -> list[dict]:
             tps=round(tps, 1) if tps else None,
             raw=r.text,
             gpu=gpu_share(model),
+            thinking_tokens=r.thinking_tokens,
         )
         try:
             rec["cards"] = parse_cards(r.text, FIELDS, DEFAULT_MACROS)
@@ -335,6 +383,7 @@ def run_cards(models: list[Model], material: str) -> list[dict]:
             rec["bare_latex"] = sum(any(bare_latex(v) for v in c.values()) for c in rec["cards"])
         except ValueError as e:
             rec["cards"], rec["json_ok"], rec["error"] = [], False, str(e)
+        rec["retries"] = rt.retries - retries_before
         print(
             f"{len(rec['cards'])} cards in {r.seconds:.1f}s"
             + ("" if rec["json_ok"] else " (bad JSON)")
@@ -378,6 +427,17 @@ def summary_table(reads: list[dict], cards: list[dict]) -> str:
         issues = sorted({i for p in r["pages"].values() for i in p.get("issues", [])})
         if issues:
             res += f" ({', '.join(issues)})"
+        if r.get("whole_pdf") is not None:
+            res += f", one request ({r['whole_pdf']}s)"
+        thinking = sum(p.get("thinking_tokens") or 0 for p in r["pages"].values())
+        if thinking and r.get("whole_pdf") is None:
+            res += f", {thinking} thinking tokens"
+        elif r.get("whole_pdf") is not None:
+            first = next(iter(r["pages"].values()), {})
+            if first.get("thinking_tokens"):
+                res += f", {first['thinking_tokens']} thinking tokens"
+        if r.get("retries"):
+            res += f", {r['retries']} rate-limit waits"
         if errs:
             first = next(p["error"] for p in r["pages"].values() if "error" in p)
             res += f": {first[:120]}"
@@ -393,6 +453,8 @@ def summary_table(reads: list[dict], cards: list[dict]) -> str:
                 f"{len(c['cards'])} cards"
                 + ("" if c.get("json_ok") else ", bad JSON")
                 + (f", {c['bare_latex']} with math outside $" if c.get("bare_latex") else "")
+                + (f", {c['thinking_tokens']} thinking tokens" if c.get("thinking_tokens") else "")
+                + (f", {c['retries']} rate-limit waits" if c.get("retries") else "")
             )
         )
         rows.append(
@@ -473,12 +535,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--card-input", default="auto", help="auto, text, or a reading model's name")
     p.add_argument("--dpi", type=int, default=150)
     p.add_argument(
-        "--num-ctx", type=int, default=8192, help="Ollama context size (smaller fits VRAM better)"
+        "--num-ctx",
+        type=int,
+        default=6144,
+        help="Ollama context size; 6144 kept qwen2.5vl:7b fully on an 8 GB GPU",
     )
     p.add_argument("--out", type=Path, help="report folder (default: bakeoff-<time> here)")
     p.add_argument("--list", action="store_true", help="list runtimes, models and suggestions")
     p.add_argument("--no-open", action="store_true", help="don't open the report when done")
-    for rt in ("ollama", "lmstudio", "llamacpp", "jan", "openai"):
+    for rt in ("ollama", "lmstudio", "llamacpp", "jan", "openai", "gemini"):
         p.add_argument(f"--{rt}", metavar="URL", help=f"{rt} server URL")
     p.add_argument("--openai-key")
     p.add_argument("--gemini-key", default=os.environ.get("GEMINI_API_KEY"))
@@ -528,9 +593,9 @@ def run(args: argparse.Namespace, rt: Runtimes) -> int:
         print_suggestions(rt)
 
     started = time.monotonic()
-    reads = run_read(readers, pages)
+    reads = run_read(rt, readers, pages, src if kind == "pdf" else None)
     source_label, material = pick_card_input(args.card_input, pages, reads)
-    cards = run_cards(writers, material) if writers and material.strip() else []
+    cards = run_cards(rt, writers, material) if writers and material.strip() else []
 
     data = {
         "source": src.name,

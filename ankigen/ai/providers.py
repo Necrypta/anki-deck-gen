@@ -16,6 +16,7 @@ import re
 import threading
 import time
 import urllib.parse
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
@@ -39,6 +40,7 @@ class ChatResult:
     output_tokens: int | None = None
     input_tokens: int | None = None
     truncated: bool = False  # hit the output-token limit
+    thinking_tokens: int | None = None
 
     @property
     def tokens_per_second(self) -> float | None:
@@ -55,6 +57,7 @@ class Provider:
     name: str = ""
     timeout: float = 600
     kind: str = field(default="", init=False)
+    on_retry: Callable[[int, float], None] | None = field(default=None, repr=False, compare=False)
 
     def ping(self) -> str:
         """Short status such as ``"Ollama 0.12.3"``; raises :class:`AiError`."""
@@ -194,7 +197,13 @@ class Ollama(Provider):
         if "thinking" in self.capabilities(model):
             body["think"] = False  # cards don't need it, and it's 3-5x slower
         start = time.monotonic()
-        r = request_json(self._url("/api/chat"), body, timeout=self.timeout, cancel=cancel)
+        r = request_json(
+            self._url("/api/chat"),
+            body,
+            timeout=self.timeout,
+            cancel=cancel,
+            on_retry=self.on_retry,
+        )
         wall = time.monotonic() - start
         ns = 1e9
         gen = (r.get("prompt_eval_duration", 0) + r.get("eval_duration", 0)) / ns
@@ -318,6 +327,7 @@ class OpenAICompatible(Provider):
                     headers=self._headers(),
                     timeout=self.timeout,
                     cancel=cancel,
+                    on_retry=self.on_retry,
                 )
             except AiError as e:
                 # Servers without structured output reject response_format with 400/422.
@@ -369,6 +379,24 @@ def gemini_schema(schema: dict) -> dict:
     return out
 
 
+def gemini_version(model: str) -> float | None:
+    m = re.match(r"gemini-(\d+(?:\.\d+)?)", model)
+    return float(m.group(1)) if m else None
+
+
+def gemini_thinking(model: str) -> dict | None:
+    """Keep thinking short: reading a page or writing cards doesn't need it,
+    and Gemini 3's default made a page take minutes in the bake-off."""
+    v = gemini_version(model)
+    if v is None:
+        return None
+    if v >= 3:
+        return {"thinkingLevel": "low"}
+    if "flash" in model:
+        return {"thinkingBudget": 0}  # 2.x Flash can switch it off; Pro can't
+    return None
+
+
 @dataclass
 class Gemini(Provider):
     base_url: str = GEMINI_URL
@@ -378,6 +406,7 @@ class Gemini(Provider):
     def __post_init__(self) -> None:
         self.kind = "gemini"
         self.base_url = self.base_url.rstrip("/")
+        self._no_thinking_config: set[str] = set()
 
     def _headers(self) -> dict[str, str]:
         if not self.api_key:
@@ -438,14 +467,25 @@ class Gemini(Provider):
             body["generationConfig"]["responseMimeType"] = "application/json"
             body["generationConfig"]["responseSchema"] = gemini_schema(schema)
         model = model.removeprefix("models/")
+        thinking = gemini_thinking(model)
+        if thinking is not None and model not in self._no_thinking_config:
+            body["generationConfig"]["thinkingConfig"] = thinking
         start = time.monotonic()
-        r = request_json(
-            f"{self.base_url}/models/{model}:generateContent",
-            body,
-            headers=self._headers(),
-            timeout=self.timeout,
-            cancel=cancel,
-        )
+        url = f"{self.base_url}/models/{model}:generateContent"
+        kw = {"headers": self._headers(), "timeout": self.timeout, "cancel": cancel}
+        try:
+            r = request_json(url, body, on_retry=self.on_retry, **kw)
+        except AiError as e:
+            # A model that rejects our thinking setting: try once with its default.
+            if (
+                e.status != 400
+                or "think" not in str(e).lower()
+                or "thinkingConfig" not in body["generationConfig"]
+            ):
+                raise
+            self._no_thinking_config.add(model)
+            del body["generationConfig"]["thinkingConfig"]
+            r = request_json(url, body, on_retry=self.on_retry, **kw)
         wall = time.monotonic() - start
         block = (r.get("promptFeedback") or {}).get("blockReason")
         candidates = r.get("candidates") or []
@@ -465,6 +505,7 @@ class Gemini(Provider):
             seconds=wall,
             output_tokens=usage.get("candidatesTokenCount"),
             input_tokens=usage.get("promptTokenCount"),
+            thinking_tokens=usage.get("thoughtsTokenCount"),
         )
 
 
