@@ -6,6 +6,8 @@ export interface Card {
   id: string;
   fields: Record<string, string>;
   tags: string[];
+  /** Values beyond the current note type's fields: kept, not shown or exported. */
+  hidden?: string[];
 }
 
 export interface Deck {
@@ -16,6 +18,8 @@ export interface Deck {
   cards: Card[];
   tags: string[];
   updatedAt: number;
+  /** The Custom layout, remembered while a built-in type is selected. */
+  customFields?: string[];
 }
 
 export interface MacroDef {

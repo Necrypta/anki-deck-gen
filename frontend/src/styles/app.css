@@ -856,6 +856,47 @@ input.field-name.is-editable:focus {
   margin-top: 12px;
 }
 
+.preset-btn {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.preset-btn:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.preset-btn.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.hidden-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 24px 24px 0;
+  max-width: 1152px;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 13px;
+}
+
+.hidden-notice .link-btn {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
 .field-row-actions {
   display: flex;
   align-items: flex-start;

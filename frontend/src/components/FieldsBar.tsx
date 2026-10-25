@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { FIELD_PRESETS, addField, moveField, removeField, renameField, setFields } from "../lib/deck";
+import { FIELD_PRESETS, addField, applyPreset, cardsUsingField, moveField, removeField, renameField } from "../lib/deck";
 import type { Deck } from "../types";
 import { Icon } from "./Icon";
 
@@ -15,7 +15,14 @@ interface Props {
 export function FieldsBar({ deck, onDeckChange, focusField, onFocused }: Props) {
   const [error, setError] = useState<string | null>(null);
   const inputs = useRef(new Map<string, HTMLInputElement>());
-  const hasContent = deck.cards.some((c) => deck.fields.some((f) => (c.fields[f] ?? "").trim()));
+  const sameLayout = (fields: string[]) =>
+    fields.length === deck.fields.length && fields.every((f, i) => f === deck.fields[i]);
+
+  const remove = (name: string) => {
+    const used = cardsUsingField(deck, name);
+    if (used && !window.confirm(`Remove “${name}”? ${used} card${used === 1 ? " has" : "s have"} content in it, which will be deleted.`)) return;
+    onDeckChange(removeField(deck, name));
+  };
 
   // A field to focus once it's in the DOM: from the parent (switching to
   // Custom, "+ Field") or from "Add field" here.
@@ -107,7 +114,7 @@ export function FieldsBar({ deck, onDeckChange, focusField, onFocused }: Props) 
                 className="icon-btn xs danger"
                 title={deck.fields.length <= 2 ? "A card needs at least two fields" : "Remove field"}
                 disabled={deck.fields.length <= 2}
-                onClick={() => onDeckChange(removeField(deck, f))}
+                onClick={() => remove(f)}
               >
                 <Icon name="x" size={12} />
               </button>
@@ -122,16 +129,24 @@ export function FieldsBar({ deck, onDeckChange, focusField, onFocused }: Props) 
       </ol>
       {error && <div className="field-error">{error}</div>}
 
-      {!hasContent && (
-        <div className="presets">
-          <span className="muted small">Start from:</span>
-          {FIELD_PRESETS.map((p) => (
-            <button key={p.label} type="button" className="link-btn" onClick={() => onDeckChange(setFields(deck, p.fields))}>
+      <div className="presets">
+        <span className="muted small">Layouts:</span>
+        {FIELD_PRESETS.map((p) => {
+          const active = sameLayout(p.fields);
+          return (
+            <button
+              key={p.label}
+              type="button"
+              className={`preset-btn ${active ? "is-active" : ""}`}
+              aria-pressed={active}
+              title="Renames the fields in order; card content is kept"
+              onClick={() => onDeckChange(applyPreset(deck, p.fields))}
+            >
               {p.label}
             </button>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
     </section>
   );
 }

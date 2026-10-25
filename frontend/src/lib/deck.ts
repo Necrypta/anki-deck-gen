@@ -42,7 +42,13 @@ export function duplicateDeck(deck: Deck, existing: Deck[]): Deck {
     ...deck,
     id: uid(),
     name: uniqueDeckName(existing, `${deck.name} copy`),
-    cards: deck.cards.map((c) => ({ ...c, id: uid(), fields: { ...c.fields }, tags: [...c.tags] })),
+    cards: deck.cards.map((c) => ({
+      ...c,
+      id: uid(),
+      fields: { ...c.fields },
+      tags: [...c.tags],
+      ...(c.hidden ? { hidden: [...c.hidden] } : {}),
+    })),
     tags: [...deck.tags],
     updatedAt: Date.now(),
   };
@@ -80,33 +86,62 @@ export function migrateSession(raw: unknown): Session {
       cards: d.cards!,
       tags: d.tags ?? [],
       updatedAt: d.updatedAt ?? Date.now(),
+      customFields: d.customFields ?? (d.noteType === "custom" ? [...d.fields!] : undefined),
     }));
   if (!decks.length) return { ...newSession(), settings };
   const active = decks.some((d) => d.id === s.activeDeckId) ? (s.activeDeckId as string) : decks[0].id;
   return { version: 2, decks, activeDeckId: active, settings };
 }
 
-/**
- * Fill new field names positionally so content survives a note-type switch.
- * Old values are kept (only the deck's current fields are exported), so
- * switching Basic → Cloze → Basic round-trips without losing anything.
- */
-function remap(card: Card, from: string[], to: string[]): Card {
-  const fields = { ...card.fields };
-  to.forEach((f, i) => {
-    if (fields[f] === undefined) fields[f] = from[i] !== undefined ? card.fields[from[i]] ?? "" : "";
-  });
-  return { ...card, fields };
+// ----- Field layouts -----
+//
+// A card's values are ordered slots; a note type only decides how many slots
+// are shown and what they're called. Switching type relabels the slots and
+// parks any that don't fit in `card.hidden`, so nothing is ever thrown away.
+
+const trimTrailingEmpty = (values: string[]) => {
+  let n = values.length;
+  while (n > 0 && !values[n - 1].trim()) n--;
+  return values.slice(0, n);
+};
+
+/** All of a card's values in slot order: visible fields first, then hidden. */
+function slotValues(card: Card, fields: string[]): string[] {
+  return [...fields.map((f) => card.fields[f] ?? ""), ...(card.hidden ?? [])];
+}
+
+function withSlots(card: Card, to: string[], values: string[]): Card {
+  const fields = Object.fromEntries(to.map((f, i) => [f, values[i] ?? ""]));
+  const hidden = trimTrailingEmpty(values.slice(to.length));
+  const { hidden: _old, ...rest } = card;
+  return hidden.length ? { ...rest, fields, hidden } : { ...rest, fields };
+}
+
+/** The one place a deck's field list changes: relabel every card's slots. */
+export function relayout(deck: Deck, to: string[], noteType: NoteType): Deck {
+  return {
+    ...deck,
+    noteType,
+    fields: [...to],
+    customFields: noteType === "custom" ? [...to] : deck.customFields,
+    cards: deck.cards.map((c) => withSlots(c, to, slotValues(c, deck.fields))),
+  };
 }
 
 export function setNoteType(deck: Deck, noteType: NoteType): Deck {
-  const fields = noteType === "custom" ? deck.fields : [...DEFAULT_FIELDS[noteType]];
-  return { ...deck, noteType, fields, cards: deck.cards.map((c) => remap(c, deck.fields, fields)) };
+  if (noteType === deck.noteType) return deck;
+  // Remember the custom layout when leaving it, and restore it when coming back.
+  const remembered = deck.noteType === "custom" ? { ...deck, customFields: [...deck.fields] } : deck;
+  const to = noteType === "custom" ? remembered.customFields ?? deck.fields : DEFAULT_FIELDS[noteType];
+  return relayout(remembered, to, noteType);
 }
 
+/** Use exactly these field names (switches to Custom); content keeps its slots. */
 export function setFields(deck: Deck, fields: string[]): Deck {
-  return { ...deck, noteType: "custom", fields, cards: deck.cards.map((c) => remap(c, deck.fields, fields)) };
+  return relayout(deck, fields, "custom");
 }
+
+export const applyPreset = setFields;
 
 export function nextFieldName(deck: Deck): string {
   let n = deck.fields.length + 1;
@@ -114,6 +149,7 @@ export function nextFieldName(deck: Deck): string {
   return `Field ${n}`;
 }
 
+/** Add a slot at the end. It picks up hidden content first, if any. */
 export function addField(deck: Deck, name = nextFieldName(deck)): Deck {
   return setFields(deck, [...deck.fields, name]);
 }
@@ -123,26 +159,31 @@ export function renameField(deck: Deck, from: string, to: string): Deck | null {
   to = to.trim();
   if (!to || to === from) return null;
   if (deck.fields.some((f) => f.toLowerCase() === to.toLowerCase() && f !== from)) return null;
-  return {
-    ...deck,
-    noteType: "custom",
-    fields: deck.fields.map((f) => (f === from ? to : f)),
-    cards: deck.cards.map((c) => {
-      const { [from]: value, ...rest } = c.fields;
-      return { ...c, fields: { ...rest, [to]: value ?? "" } };
-    }),
-  };
+  return setFields(
+    deck,
+    deck.fields.map((f) => (f === from ? to : f)),
+  );
 }
 
+/** Number of cards with content in a field (to warn before removing it). */
+export function cardsUsingField(deck: Deck, name: string): number {
+  return deck.cards.filter((c) => (c.fields[name] ?? "").trim()).length;
+}
+
+/** Remove a field and its content from every card (the only deleting operation). */
 export function removeField(deck: Deck, name: string): Deck {
-  if (deck.fields.length <= 2) return deck;
+  const i = deck.fields.indexOf(name);
+  if (i < 0 || deck.fields.length <= 2) return deck;
+  const to = deck.fields.filter((f) => f !== name);
   return {
     ...deck,
     noteType: "custom",
-    fields: deck.fields.filter((f) => f !== name),
+    fields: to,
+    customFields: [...to],
     cards: deck.cards.map((c) => {
-      const { [name]: _removed, ...rest } = c.fields;
-      return { ...c, fields: rest };
+      const values = slotValues(c, deck.fields);
+      values.splice(i, 1);
+      return withSlots(c, to, values);
     }),
   };
 }
@@ -151,9 +192,21 @@ export function moveField(deck: Deck, name: string, delta: -1 | 1): Deck {
   const i = deck.fields.indexOf(name);
   const j = i + delta;
   if (i < 0 || j < 0 || j >= deck.fields.length) return deck;
-  const fields = [...deck.fields];
-  [fields[i], fields[j]] = [fields[j], fields[i]];
-  return { ...deck, noteType: "custom", fields };
+  const to = [...deck.fields];
+  [to[i], to[j]] = [to[j], to[i]];
+  // Values move with their field, so cards are re-keyed by name, not by slot.
+  return {
+    ...deck,
+    noteType: "custom",
+    fields: to,
+    customFields: [...to],
+    cards: deck.cards.map((c) => withSlots(c, to, [...to.map((f) => c.fields[f] ?? ""), ...(c.hidden ?? [])])),
+  };
+}
+
+/** Cards with content the current layout doesn't show. */
+export function cardsWithHiddenContent(deck: Deck): number {
+  return deck.cards.filter((c) => c.hidden?.some((v) => v.trim())).length;
 }
 
 export const FIELD_PRESETS: { label: string; fields: string[] }[] = [

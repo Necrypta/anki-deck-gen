@@ -341,7 +341,12 @@ export default function App() {
                 setView("editor");
               }}
               onReplace={(next) => {
-                setDeck({ ...next, id: deck.id });
+                setDeck({
+                  ...next,
+                  id: deck.id,
+                  customFields: next.noteType === "custom" ? [...next.fields] : deck.customFields,
+                  cards: next.cards,
+                });
                 setSelectedId(next.cards[0]?.id ?? null);
                 setView("editor");
               }}

@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { addField, setNoteType } from "../lib/deck";
+import { addField, cardsWithHiddenContent, setNoteType } from "../lib/deck";
 import { NOTE_TYPE_LABELS, type Card, type Deck, type MacroDef, type NoteType } from "../types";
 import { CardList } from "./CardList";
 import { FieldInput } from "./FieldInput";
@@ -42,6 +42,7 @@ export function EditorView({
   const card = deck.cards.find((c) => c.id === selectedId) ?? deck.cards[0];
   const index = card ? deck.cards.indexOf(card) + 1 : 0;
   const custom = deck.noteType === "custom";
+  const hiddenCount = custom ? 0 : cardsWithHiddenContent(deck);
 
   const updateCard = (patch: Partial<Card>) =>
     onDeckChange({ ...deck, cards: deck.cards.map((c) => (c.id === card.id ? { ...c, ...patch } : c)) });
@@ -90,6 +91,17 @@ export function EditorView({
         </div>
 
         <div className="editor-scroll">
+          {hiddenCount > 0 && (
+            <div className="hidden-notice" role="note">
+              <span>
+                {hiddenCount} card{hiddenCount === 1 ? " has" : "s have"} content in fields {NOTE_TYPE_LABELS[deck.noteType]} doesn't
+                show. It's kept, and comes back when you switch to Custom.
+              </span>
+              <button type="button" className="link-btn" onClick={() => changeType("custom")}>
+                Switch to Custom
+              </button>
+            </div>
+          )}
           {custom && (
             <FieldsBar deck={deck} onDeckChange={onDeckChange} focusField={focusField} onFocused={clearFocus} />
           )}
