@@ -1,0 +1,37 @@
+# deck: Physics::Sample
+# type: basic
+# tags: sample
+
+Front: Newton's second law
+Back: $$\vb{F} = \dv{\vb{p}}{t} = m\vb{a}$$
+Extra: Holds in inertial frames.
+---
+Front: Gauss's law (differential form)
+Back: $$\divg\vb{E} = \frac{\rho}{\varepsilon_0}$$
+Tags: em maxwell
+---
+Front: Faraday's law of induction
+Back: $$\curl\vb{E} = -\pdv{\vb{B}}{t}$$
+Extra: The minus sign is Lenz's law.
+Tags: em maxwell
+---
+Front: Time-dependent Schrödinger equation
+Back: $$i\hbar\pdv{}{t}\ket{\psi(t)} = \hat H\ket{\psi(t)}$$
+Tags: quantum
+---
+Front: Heisenberg uncertainty (position–momentum)
+Back: $\sigma_x\,\sigma_p \ge \dfrac{\hbar}{2}$
+Tags: quantum
+---
+Front: Relativistic energy–momentum relation
+Back: $$E^2 = (pc)^2 + \left(m_0c^2\right)^2$$
+Tags: relativity
+---
+Front: Alpha decay of uranium-238
+Back: $\ce{^{238}_{92}U -> ^{234}_{90}Th + ^{4}_{2}He}$
+Tags: nuclear
+---
+Front: Ideal gas law
+Back: $pV = nRT = Nk_BT$
+Extra: $R = 8.314\ \mathrm{J\,mol^{-1}\,K^{-1}}$
+Tags: thermo

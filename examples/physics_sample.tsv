@@ -1,0 +1,5 @@
+#separator:tab
+Speed of light in vacuum	$c = 299\,792\,458\ \mathrm{m/s}$
+Planck constant	$h = 6.626\times10^{-34}\ \mathrm{J\,s}$
+Coulomb's law	$F = \dfrac{1}{4\pi\varepsilon_0}\dfrac{q_1q_2}{r^2}$
+de Broglie wavelength	$\lambda = \dfrac{h}{p}$

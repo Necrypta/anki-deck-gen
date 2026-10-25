@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anki-deck-generator"
+version = "0.1.0"
+description = "Desktop app for building custom Anki decks (.apkg) with LaTeX support"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "genanki>=0.13",
+    "pywebview>=5.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.5", "pyinstaller>=6.0"]
+
+[project.gui-scripts]
+anki-deck-generator = "ankigen.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["ankigen*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
