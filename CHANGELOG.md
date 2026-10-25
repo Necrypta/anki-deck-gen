@@ -5,6 +5,7 @@ Each pull request adds a line under **Unreleased**. Releasing moves those lines 
 ## [Unreleased]
 
 - **AI bake-off tool** (`ai-bakeoff.exe` in test builds): compares local models (Ollama, LM Studio, llama.cpp, Jan) and optionally Gemini on your own PDF pages, and writes a report with transcriptions, cards, speed and GPU fit. Groundwork for AI card generation.
+- Bake-off fixes from the first real run: generation is capped so thinking models can't run for minutes, thinking-only replies give a clear error, leaked tokens and repetition loops are cleaned up and flagged, cards with math outside `$…$` are flagged, and Gemini uses the newest Flash model instead of a retired one.
 
 ## [0.2.0] - 2026-10-25
 

@@ -38,6 +38,7 @@ class ChatResult:
     load_seconds: float = 0.0
     output_tokens: int | None = None
     input_tokens: int | None = None
+    truncated: bool = False  # hit the output-token limit
 
     @property
     def tokens_per_second(self) -> float | None:
@@ -115,6 +116,7 @@ class Ollama(Provider):
     base_url: str = "http://localhost:11434"
     name: str = "Ollama"
     num_ctx: int = 8192
+    max_tokens: int = 4096  # stops runaway thinking or repetition loops
 
     def __post_init__(self) -> None:
         self.kind = "ollama"
@@ -180,7 +182,11 @@ class Ollama(Provider):
             "model": model,
             "messages": messages,
             "stream": False,
-            "options": {"temperature": temperature, "num_ctx": self.num_ctx},
+            "options": {
+                "temperature": temperature,
+                "num_ctx": self.num_ctx,
+                "num_predict": self.max_tokens,
+            },
             "keep_alive": "10m",
         }
         if schema is not None:
@@ -192,13 +198,29 @@ class Ollama(Provider):
         wall = time.monotonic() - start
         ns = 1e9
         gen = (r.get("prompt_eval_duration", 0) + r.get("eval_duration", 0)) / ns
-        return ChatResult(
-            text=strip_think((r.get("message") or {}).get("content", "")),
-            seconds=gen or wall,
-            load_seconds=r.get("load_duration", 0) / ns,
-            output_tokens=r.get("eval_count"),
-            input_tokens=r.get("prompt_eval_count"),
+        msg = r.get("message") or {}
+        return _checked(
+            ChatResult(
+                text=strip_think(msg.get("content", "")),
+                seconds=gen or wall,
+                load_seconds=r.get("load_duration", 0) / ns,
+                output_tokens=r.get("eval_count"),
+                input_tokens=r.get("prompt_eval_count"),
+                truncated=r.get("done_reason") == "length",
+            ),
+            raw=msg.get("content", "") + msg.get("thinking", ""),
         )
+
+
+def _checked(result: ChatResult, raw: str) -> ChatResult:
+    """Turn "thought until the limit, then said nothing" into a clear error."""
+    if not result.text.strip() and raw.strip():
+        tokens = f" all {result.output_tokens} tokens" if result.output_tokens else ""
+        raise AiError(
+            f"The model spent{tokens} thinking and gave no answer. "
+            "Try a non-thinking (instruct) version of it."
+        )
+    return result
 
 
 # ---------------------------------------------------------- OpenAI-compatible
@@ -210,6 +232,7 @@ class OpenAICompatible(Provider):
     name: str = "OpenAI-compatible"
     api_key: str | None = None
     vision_models: set[str] = field(default_factory=set)  # user says "this one reads images"
+    max_tokens: int = 4096
 
     def __post_init__(self) -> None:
         self.kind = "openai"
@@ -271,6 +294,7 @@ class OpenAICompatible(Provider):
             "messages": messages,
             "temperature": temperature,
             "stream": False,
+            "max_tokens": self.max_tokens,
         }
 
         modes = ["schema", "object", "none"] if schema is not None else ["none"]
@@ -306,11 +330,16 @@ class OpenAICompatible(Provider):
         choices = r.get("choices") or [{}]
         msg = choices[0].get("message") or {}
         usage = r.get("usage") or {}
-        return ChatResult(
-            text=strip_think(msg.get("content") or ""),
-            seconds=wall,
-            output_tokens=usage.get("completion_tokens"),
-            input_tokens=usage.get("prompt_tokens"),
+        content = msg.get("content") or ""
+        return _checked(
+            ChatResult(
+                text=strip_think(content),
+                seconds=wall,
+                output_tokens=usage.get("completion_tokens"),
+                input_tokens=usage.get("prompt_tokens"),
+                truncated=choices[0].get("finish_reason") == "length",
+            ),
+            raw=content + (msg.get("reasoning_content") or msg.get("reasoning") or ""),
         )
 
 
@@ -437,6 +466,23 @@ class Gemini(Provider):
             output_tokens=usage.get("candidatesTokenCount"),
             input_tokens=usage.get("promptTokenCount"),
         )
+
+
+def newest_gemini(ids: list[str], family: str = "flash") -> str | None:
+    """The newest stable model of a family, e.g. ``gemini-3.8-flash``.
+
+    Google retires older models for new keys, so never pin a version.
+    """
+
+    def version(mid: str) -> tuple[float, int]:
+        m = re.match(rf"gemini-(\d+(?:\.\d+)?)-{family}(-latest)?$", mid)
+        return (float(m.group(1)), 0) if m else (-1.0, 0)
+
+    stable = [i for i in ids if version(i)[0] >= 0]
+    if stable:
+        return max(stable, key=version)
+    loose = [i for i in ids if family in i and "lite" not in i]
+    return loose[-1] if loose else (ids[-1] if ids else None)
 
 
 # ------------------------------------------------------------------ discovery

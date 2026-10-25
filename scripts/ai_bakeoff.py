@@ -35,7 +35,7 @@ from pathlib import Path
 if not getattr(sys, "frozen", False):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from ankigen.ai.cards import card_schema, parse_cards
+from ankigen.ai.cards import bare_latex, card_schema, parse_cards
 from ankigen.ai.http import AiError, request_json
 from ankigen.ai.prompts import card_messages, is_ocr_model, read_messages
 from ankigen.ai.providers import (
@@ -44,6 +44,7 @@ from ankigen.ai.providers import (
     Provider,
     detect_local,
     make_provider,
+    newest_gemini,
 )
 from ankigen.ai.sources import (
     Page,
@@ -53,21 +54,22 @@ from ankigen.ai.sources import (
     pdf_page_count,
     source_kind,
 )
-from ankigen.ai.text import clean_markdown
+from ankigen.ai.text import clean_markdown, collapse_repeats, strip_special_tokens
 from ankigen.latex import DEFAULT_MACROS
 
 # Candidates for an 8 GB GPU. Tags change over time: missing ones are skipped
 # and listed with the command to download them.
 SUGGESTED_READ = [
-    ("qwen2.5vl:7b", "Qwen2.5-VL 7B: strong at OCR and LaTeX"),
-    ("qwen3-vl:8b", "Qwen3-VL 8B: newer Qwen vision model"),
+    ("qwen2.5vl:7b", "Qwen2.5-VL 7B: best so far, fast and clean LaTeX"),
     ("minicpm-v:8b", "MiniCPM-V 8B: good OCR for its size"),
     ("gemma3:4b", "Gemma 3 4B: small and fast"),
-    ("deepseek-ocr", "DeepSeek-OCR 3B: dedicated page-to-Markdown model (recent Ollama)"),
+    ("deepseek-ocr", "DeepSeek-OCR 3B: very fast, but can loop or leak tokens (experimental)"),
 ]
+# qwen3-vl:8b is left out: its default tag thinks for minutes per page and
+# returns nothing. An "-instruct" tag may work if you want to try it.
 SUGGESTED_CARDS = [
-    ("qwen3:8b", "Qwen3 8B: likely all-rounder (thinking switched off)"),
-    ("deepseek-r1:8b", "DeepSeek-R1 8B (Qwen3 distill): strong reasoning, slower"),
+    ("qwen3:8b", "Qwen3 8B: best so far, fast and accurate (thinking switched off)"),
+    ("deepseek-r1:8b", "DeepSeek-R1 8B: always thinks (minutes), often drops the $...$"),
     ("llama3.1:8b", "Llama 3.1 8B"),
     ("gemma3:4b", "Gemma 3 4B: small and fast"),
     ("phi4-mini", "Phi-4-mini 3.8B: small, decent at maths"),
@@ -116,6 +118,8 @@ class Runtimes:
                 if not url:
                     raise SystemExit("openai/... models need --openai URL")
                 kw["api_key"] = self.args.openai_key
+            if runtime == "ollama":
+                kw["num_ctx"] = self.args.num_ctx
             self._providers[runtime] = make_provider(kind, url, name, **kw)
         return self._providers[runtime]
 
@@ -139,12 +143,7 @@ def _matches(installed: str, tag: str) -> bool:
 
 
 def default_gemini(models: list[ModelInfo]) -> str | None:
-    ids = [m.id for m in models]
-    for want in ("gemini-2.5-flash", "gemini-flash-latest"):
-        if want in ids:
-            return want
-    flash = [i for i in ids if "flash" in i and "lite" not in i and "preview" not in i]
-    return (flash or ids or [None])[-1]
+    return newest_gemini([m.id for m in models])
 
 
 def pick_defaults(rt: Runtimes, stage: str) -> list[Model]:
@@ -278,13 +277,22 @@ def run_read(models: list[Model], pages: list[Page]) -> list[dict]:
                 continue
             rec["load"] += r.load_seconds
             tps = r.tokens_per_second
+            issues = []
+            if collapse_repeats(strip_special_tokens(r.text))[1]:
+                issues.append("looped")
+            if strip_special_tokens(r.text) != r.text:
+                issues.append("leaked tokens")
+            if r.truncated:
+                issues.append("hit token limit")
             rec["pages"][page.number] = {
                 "text": clean_markdown(r.text),
                 "seconds": round(r.seconds, 1),
                 "tokens": r.output_tokens,
                 "tps": round(tps, 1) if tps else None,
+                "issues": issues,
             }
-            print(f"{r.seconds:.1f}s" + (f", {tps:.0f} tok/s" if tps else ""))
+            note = f" ({', '.join(issues)})" if issues else ""
+            print(f"{r.seconds:.1f}s" + (f", {tps:.0f} tok/s" if tps else "") + note)
         rec["gpu"] = gpu_share(model)
         ok = [p for p in rec["pages"].values() if "error" not in p]
         rec["avg_seconds"] = round(sum(p["seconds"] for p in ok) / len(ok), 1) if ok else None
@@ -321,6 +329,7 @@ def run_cards(models: list[Model], material: str) -> list[dict]:
         try:
             rec["cards"] = parse_cards(r.text, FIELDS, DEFAULT_MACROS)
             rec["json_ok"] = True
+            rec["bare_latex"] = sum(any(bare_latex(v) for v in c.values()) for c in rec["cards"])
         except ValueError as e:
             rec["cards"], rec["json_ok"], rec["error"] = [], False, str(e)
         print(
@@ -363,6 +372,12 @@ def summary_table(reads: list[dict], cards: list[dict]) -> str:
     for r in reads:
         errs = sum(1 for p in r["pages"].values() if "error" in p)
         res = f"{len(r['pages']) - errs}/{len(r['pages'])} pages"
+        issues = sorted({i for p in r["pages"].values() for i in p.get("issues", [])})
+        if issues:
+            res += f" ({', '.join(issues)})"
+        if errs:
+            first = next(p["error"] for p in r["pages"].values() if "error" in p)
+            res += f": {first[:120]}"
         rows.append(
             f"| read | {r['model']} | {f(r['avg_seconds'])} | {f(r['avg_tps'])} | {f(r['load'], 's')} "
             f"| {f(r.get('gpu'), '%')} | {res} |"
@@ -371,7 +386,11 @@ def summary_table(reads: list[dict], cards: list[dict]) -> str:
         res = (
             c.get("error")
             if "seconds" not in c
-            else (f"{len(c['cards'])} cards" + ("" if c.get("json_ok") else ", bad JSON"))
+            else (
+                f"{len(c['cards'])} cards"
+                + ("" if c.get("json_ok") else ", bad JSON")
+                + (f", {c['bare_latex']} with math outside $" if c.get("bare_latex") else "")
+            )
         )
         rows.append(
             f"| cards | {c['model']} | {f(c.get('seconds'))} | {f(c.get('tps'))} | {f(c.get('load'), 's')} "
@@ -450,6 +469,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--skip-cards", action="store_true")
     p.add_argument("--card-input", default="auto", help="auto, text, or a reading model's name")
     p.add_argument("--dpi", type=int, default=150)
+    p.add_argument(
+        "--num-ctx", type=int, default=8192, help="Ollama context size (smaller fits VRAM better)"
+    )
     p.add_argument("--out", type=Path, help="report folder (default: bakeoff-<time> here)")
     p.add_argument("--list", action="store_true", help="list runtimes, models and suggestions")
     p.add_argument("--no-open", action="store_true", help="don't open the report when done")
@@ -559,7 +581,7 @@ th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;font-
 <script>
 const D = JSON.parse(document.getElementById("data").textContent);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const MATH = /\$\$[\s\S]+?\$\$|\$(?!\s)(?:\\\$|[^$\n])+?\$/g;
+const MATH = /\$\$[\s\S]+?\$\$|\$(?:\\\$|[^$\n])+?\$/g;
 const OPT = Object.keys(D.macros).filter(k => k.endsWith("OPT")).map(k => k.slice(0, -3));
 function opt(s) {
   for (const name of OPT) s = s.split(name + "[").join(name + "OPT[").replace(new RegExp(name.replace("\\", "\\\\") + "OPT\\[([^\\]]*)\\]", "g"), (_, n) => name + "OPT{" + n + "}");
@@ -576,9 +598,9 @@ function render() {
   const app = document.getElementById("app");
   let h = `<h1>${esc(D.source)}</h1><div class="muted">${esc(D.created)} · ${esc(D.machine.gpu || D.machine.os)} · ${D.minutes} min · pages ${D.pages.join(", ")}</div>`;
   h += `<h2>Summary</h2><table><tr><th>Stage</th><th>Model</th><th>Seconds (per page)</th><th>Tokens/s</th><th>Load</th><th>On GPU</th><th>Result</th><th>Math errors</th></tr>`;
-  D.read.forEach((r, i) => { const n = Object.keys(r.pages).length, bad = Object.values(r.pages).filter(p => p.error).length;
-    h += `<tr><td>read</td><td>${esc(r.model)}</td><td>${fmt(r.avg_seconds)}</td><td>${fmt(r.avg_tps)}</td><td>${fmt(r.load, "s")}</td><td>${fmt(r.gpu, "%")}</td><td>${n - bad}/${n} pages</td><td id="err-r${i}">…</td></tr>`; });
-  D.cards.forEach((c, i) => { const res = c.seconds == null ? `<span class="bad">${esc(c.error)}</span>` : `${c.cards.length} cards${c.json_ok ? "" : ' <span class="bad">bad JSON</span>'}`;
+  D.read.forEach((r, i) => { const n = Object.keys(r.pages).length, bad = Object.values(r.pages).filter(p => p.error).length, iss = [...new Set(Object.values(r.pages).flatMap(p => p.issues || []))];
+    h += `<tr><td>read</td><td>${esc(r.model)}</td><td>${fmt(r.avg_seconds)}</td><td>${fmt(r.avg_tps)}</td><td>${fmt(r.load, "s")}</td><td>${fmt(r.gpu, "%")}</td><td>${n - bad}/${n} pages${iss.length ? ` <span class="bad">${esc(iss.join(", "))}</span>` : ""}</td><td id="err-r${i}">…</td></tr>`; });
+  D.cards.forEach((c, i) => { const res = c.seconds == null ? `<span class="bad">${esc(c.error)}</span>` : `${c.cards.length} cards${c.json_ok ? "" : ' <span class="bad">bad JSON</span>'}${c.bare_latex ? ` <span class="bad">${c.bare_latex} with math outside $</span>` : ""}`;
     h += `<tr><td>cards</td><td>${esc(c.model)}</td><td>${fmt(c.seconds)}</td><td>${fmt(c.tps)}</td><td>${fmt(c.load, "s")}</td><td>${fmt(c.gpu, "%")}</td><td>${res}</td><td id="err-c${i}">…</td></tr>`; });
   h += `</table><p class="muted">"On GPU" below 100% means part of the model spilled into system RAM, which is much slower. Load = time to load the model into memory (once).</p>`;
   if (D.read.length) {

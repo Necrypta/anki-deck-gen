@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from ..latex import MacroDef
 from .text import normalize_math, parse_json_lenient
 
@@ -67,3 +69,12 @@ def _as_text(value: object) -> str:
     if isinstance(value, list):
         return "\n".join(_as_text(v) for v in value)
     return str(value)
+
+
+_MATHLIKE = re.compile(r"\\[A-Za-z]+|[_^]\{")
+
+
+def bare_latex(text: str) -> bool:
+    r"""True when LaTeX appears outside ``$…$`` (it would show as raw ``\frac``)."""
+    outside = re.sub(r"\$\$.+?\$\$|\$(?:\\.|[^$\\])+\$", "", text, flags=re.DOTALL)
+    return bool(_MATHLIKE.search(outside))

@@ -10,11 +10,18 @@ import pytest
 
 from ankigen.ai import AiError, Gemini, Ollama, OpenAICompatible, detect_local
 from ankigen.ai import http as aihttp
-from ankigen.ai.cards import card_schema, parse_cards
+from ankigen.ai.cards import bare_latex, card_schema, parse_cards
 from ankigen.ai.prompts import card_messages, macro_signature, read_messages, target_count
-from ankigen.ai.providers import gemini_schema, guess_vision
+from ankigen.ai.providers import gemini_schema, guess_vision, newest_gemini
 from ankigen.ai.sources import load_image, load_pdf, parse_page_range, pdf_subset, source_kind
-from ankigen.ai.text import normalize_math, parse_json_lenient, repair_latex_escapes, strip_think
+from ankigen.ai.text import (
+    clean_markdown,
+    collapse_repeats,
+    normalize_math,
+    parse_json_lenient,
+    repair_latex_escapes,
+    strip_think,
+)
 from ankigen.latex import DEFAULT_MACROS, MacroDef
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -188,6 +195,7 @@ class Stub:
         self.requests: list[tuple[str, dict, dict]] = []
         self.fail_429 = 0
         self.reject_schema = False
+        self.only_thinking = False
         self.reply = '{"cards": [{"Front": "Q", "Back": "A"}]}'
         stub = self
 
@@ -229,6 +237,14 @@ class Stub:
                         "nomic-embed-text:latest": ["embedding"],
                     }
                     return self._send({"capabilities": caps.get(body["model"], [])})
+                if p == "/api/chat" and stub.only_thinking:
+                    return self._send(
+                        {
+                            "message": {"content": "", "thinking": "hmm " * 50},
+                            "eval_count": 4096,
+                            "done_reason": "length",
+                        }
+                    )
                 if p == "/api/chat":
                     return self._send(
                         {
@@ -478,3 +494,44 @@ def test_bakeoff_list(stub, capsys):
     assert _bakeoff().main(["--list", "--ollama", stub.url]) == 0
     out = capsys.readouterr().out
     assert "Suggested for an 8 GB GPU" in out and "[x] qwen3:8b" in out
+
+
+# ------------------------------------------------------- fixes from the bake-off
+
+
+def test_clean_markdown_strips_tokens_and_loops():
+    raw = "<|im_end|>\n<|md_start|>Intro.<nl>\n" + "<|md_start|>same line\n<|md_end|>\n" * 6 + "End"
+    assert clean_markdown(raw) == "Intro.\nsame line\nsame line\n\nEnd"
+    text, looped = collapse_repeats("$$\nx\n$$\n$$\ny\n$$")
+    assert not looped and text.count("$$") == 4
+
+
+def test_bare_latex():
+    assert bare_latex(r"p_n(x) = \frac{1}{K_n}")
+    assert not bare_latex(r"$K_n = \frac{1}{2}$ and $$a^{2}$$")
+    assert not bare_latex("Plain answer with x_n")
+
+
+def test_newest_gemini():
+    ids = [
+        "gemini-2.5-flash",
+        "gemini-3.8-flash",
+        "gemini-3.8-flash-lite",
+        "gemini-3.8-pro",
+        "gemini-10.0-flash-preview-x",
+    ]
+    assert newest_gemini(ids) == "gemini-3.8-flash"
+    assert newest_gemini(["gemini-pro-latest"]) == "gemini-pro-latest"
+    assert newest_gemini([]) is None
+
+
+def test_thinking_only_reply_is_a_clear_error(stub):
+    stub.only_thinking = True
+    with pytest.raises(AiError, match="spent all 4096 tokens thinking"):
+        Ollama(stub.url).chat("qwen3:8b", "hi")
+    assert stub.requests[-1][1]["options"]["num_predict"] == 4096
+
+
+def test_openai_sends_token_limit(stub):
+    OpenAICompatible(stub.url).chat("local-model", "hi")
+    assert stub.requests[-1][1]["max_tokens"] == 4096

@@ -30,8 +30,46 @@ def normalize_math(text: str) -> str:
     return re.sub(r"\\\((.+?)\\\)", lambda m: f"${m.group(1).strip()}$", text, flags=re.DOTALL)
 
 
+_SPECIAL = re.compile(r"<\|[^<>|]{0,40}\|>|<nl>|<\|?(?:im_end|im_start|endoftext)\|?>")
+
+
+def strip_special_tokens(text: str) -> str:
+    """Remove leaked template tokens such as ``<|im_end|>`` or ``<|md_start|>``."""
+    return _SPECIAL.sub("", text)
+
+
+def collapse_repeats(text: str, limit: int = 2) -> tuple[str, bool]:
+    """Cut a repetition loop: keep a line repeated back-to-back at most ``limit`` times.
+
+    Returns the text and whether anything was cut.
+    """
+    out: list[str] = []
+    run = 0
+    looped = False
+    for line in text.split("\n"):
+        if not line.strip() or line.strip() in ("$$", "---", "```"):
+            out.append(line)
+            continue
+        same = line.strip() == _last_nonblank(out)
+        run = run + 1 if same else 0
+        if run >= limit:
+            looped = True
+            continue
+        if same:
+            # drop the blank lines between repeats too
+            while out and not out[-1].strip():
+                out.pop()
+        out.append(line)
+    return "\n".join(out), looped
+
+
+def _last_nonblank(lines: list[str]) -> str:
+    return next((x.strip() for x in reversed(lines) if x.strip()), "")
+
+
 def clean_markdown(text: str) -> str:
-    return normalize_math(strip_fences(strip_think(text))).strip()
+    text = collapse_repeats(strip_special_tokens(strip_fences(strip_think(text))))[0]
+    return normalize_math(re.sub(r"\n{3,}", "\n\n", text)).strip()
 
 
 # LaTeX commands whose first letter is also a JSON escape (\b \f \n \r \t \u).
