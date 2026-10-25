@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { DEFAULT_MACROS, formatMacros, parseMacros } from "../lib/deck";
-import type { Deck, Settings, Theme } from "../types";
+import type { BuildInfo, Deck, Settings, Theme } from "../types";
 import { MathPreview } from "./MathPreview";
 import { Segmented } from "./Segmented";
 import { TagInput } from "./TagInput";
@@ -8,12 +8,12 @@ import { TagInput } from "./TagInput";
 interface Props {
   settings: Settings;
   deck: Deck;
-  version: string;
+  build: BuildInfo;
   onSettingsChange: (s: Settings) => void;
   onDeckChange: (d: Deck) => void;
 }
 
-export function SettingsView({ settings, deck, version, onSettingsChange, onDeckChange }: Props) {
+export function SettingsView({ settings, deck, build, onSettingsChange, onDeckChange }: Props) {
   const [macroText, setMacroText] = useState(formatMacros(settings.macros));
   const [sample, setSample] = useState("$\\pdv{\\psi}{t} = \\frac{1}{i\\hbar}\\hat H \\psi$, $\\ce{^{238}_{92}U -> ^{234}_{90}Th + \\alpha}$");
 
@@ -93,7 +93,13 @@ export function SettingsView({ settings, deck, version, onSettingsChange, onDeck
         </div>
       </section>
 
-      <footer className="settings-foot muted small">Anki Deck Generator {version}</footer>
+      <footer className="settings-foot muted small">
+        <div>
+          Anki Deck Generator {build.version}
+          {!build.release && build.build && ` · test build ${build.build}`}
+        </div>
+        {build.dataDir && <div>Data: {build.dataDir}</div>}
+      </footer>
     </div>
   );
 }

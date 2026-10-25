@@ -1,0 +1,86 @@
+# Releases: pushing a tag like v0.2.0 builds the installer + portable exe and
+# publishes them as a GitHub Release with notes from CHANGELOG.md.
+# PRs that touch the installer get a dry run (built and uploaded, not published).
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - installer/**
+      - .github/workflows/release.yml
+      - .github/actions/build-app/**
+      - scripts/stamp_build.py
+      - scripts/changelog_section.py
+
+permissions:
+  contents: write
+
+env:
+  PYTHONUTF8: "1"
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Work out version
+        id: v
+        shell: pwsh
+        run: |
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $tag = "${{ github.ref_name }}"
+            "tag=$tag" >> $env:GITHUB_OUTPUT
+            "version=$($tag.TrimStart('v'))" >> $env:GITHUB_OUTPUT
+            "check=true" >> $env:GITHUB_OUTPUT
+          } else {
+            $ver = (Select-String -Path pyproject.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+            "tag=v$ver" >> $env:GITHUB_OUTPUT
+            "version=$ver" >> $env:GITHUB_OUTPUT
+            "check=false" >> $env:GITHUB_OUTPUT
+          }
+
+      - uses: ./.github/actions/build-app
+        with:
+          label: ${{ steps.v.outputs.tag }}
+          check-version: ${{ steps.v.outputs.check }}
+
+      - name: Install Inno Setup if missing
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Qp "/DAppVersion=${{ steps.v.outputs.version }}" installer\AnkiDeckGenerator.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item dist\AnkiDeckGenerator.exe "dist\AnkiDeckGenerator-${{ steps.v.outputs.version }}-portable.exe"
+
+      - name: Release notes
+        shell: pwsh
+        run: python scripts/changelog_section.py "${{ steps.v.outputs.version }}" -o dist/notes.md
+
+      - name: Upload dry-run build
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dry-run-${{ steps.v.outputs.version }}
+          path: |
+            dist/AnkiDeckGenerator-Setup-*.exe
+            dist/AnkiDeckGenerator-*-portable.exe
+            dist/notes.md
+          retention-days: 7
+
+      - name: Publish GitHub Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Anki Deck Generator ${{ steps.v.outputs.tag }}
+          body_path: dist/notes.md
+          files: |
+            dist/AnkiDeckGenerator-Setup-${{ steps.v.outputs.version }}.exe
+            dist/AnkiDeckGenerator-${{ steps.v.outputs.version }}-portable.exe

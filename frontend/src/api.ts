@@ -65,7 +65,14 @@ function toSpec(deck: Deck, macros: Record<string, string>) {
 
 export const api = {
   info: () =>
-    call<{ version: string; formats: string[]; default_macros: Record<string, string> }>("info"),
+    call<{
+      version: string;
+      build: string;
+      release: boolean;
+      data_dir: string;
+      formats: string[];
+      default_macros: Record<string, string>;
+    }>("info"),
   parseText: (text: string, fmt: string, options: Record<string, unknown>) =>
     call<ParseResult>("parse_text", text, fmt, options),
   openTextFile: () =>
