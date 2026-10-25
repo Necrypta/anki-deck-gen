@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { DeckList } from "./components/DeckList";
 import { EditorView } from "./components/EditorView";
+import { emptyGenerateState, type GenerateState, GenerateView } from "./components/GenerateView";
 import { Icon, type IconName } from "./components/Icon";
 import { ImportView } from "./components/ImportView";
 import { SettingsView } from "./components/SettingsView";
@@ -16,7 +17,7 @@ import {
   uid,
 } from "./lib/deck";
 import { hasMathProblem } from "./lib/math";
-import type { BuildInfo, Card, Deck, Session, Settings, View } from "./types";
+import type { AiStatus, BuildInfo, Card, Deck, Session, Settings, View } from "./types";
 
 interface Toast {
   id: number;
@@ -27,6 +28,7 @@ interface Toast {
 
 const NAV: { view: View; label: string; icon: IconName }[] = [
   { view: "editor", label: "Editor", icon: "edit" },
+  { view: "generate", label: "Generate", icon: "sparkle" },
   { view: "import", label: "Import", icon: "import" },
   { view: "settings", label: "Settings", icon: "settings" },
 ];
@@ -40,6 +42,10 @@ export default function App() {
   const [build, setBuild] = useState<BuildInfo>({ version: "", build: "", release: true, dataDir: "" });
   const [exporting, setExporting] = useState(false);
   const toastTimer = useRef<number>();
+  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
+  const [aiChecking, setAiChecking] = useState(false);
+  // Generate page work, per deck, so switching pages keeps it (and any running job).
+  const [generate, setGenerate] = useState<Record<string, GenerateState>>({});
 
   // Load the saved session (or start fresh).
   useEffect(() => {
@@ -64,6 +70,19 @@ export default function App() {
     else document.documentElement.dataset.theme = theme;
   }, [session?.settings.theme]);
 
+  const extraUrls = session?.settings.ai.extraUrls;
+  const refreshAi = useCallback(async () => {
+    setAiChecking(true);
+    const res = await api.aiStatus(extraUrls ?? []);
+    setAiChecking(false);
+    if (res.ok) setAiStatus({ runtimes: res.runtimes, gemini: res.gemini, suggested: res.suggested });
+  }, [extraUrls]);
+
+  // Look for AI the first time the Generate or Settings page opens.
+  useEffect(() => {
+    if ((view === "generate" || view === "settings") && !aiStatus && !aiChecking) refreshAi();
+  }, [view, aiStatus, aiChecking, refreshAi]);
+
   const notify = useCallback((message: string, kind: "info" | "error" = "info", action?: Toast["action"]) => {
     window.clearTimeout(toastTimer.current);
     setToast({ id: Date.now(), message, kind, action });
@@ -84,6 +103,12 @@ export default function App() {
         s ? { ...s, decks: s.decks.map((d) => (d.id === next.id ? { ...next, updatedAt: Date.now() } : d)) } : s,
       ),
     [],
+  );
+  const deckId = deck?.id;
+  const updateGenerate = useCallback(
+    (update: (s: GenerateState) => GenerateState) =>
+      deckId && setGenerate((g) => ({ ...g, [deckId]: update(g[deckId] ?? emptyGenerateState()) })),
+    [deckId],
   );
   const setSettings = useCallback((settings: Settings) => setSession((s) => (s ? { ...s, settings } : s)), []);
 
@@ -328,6 +353,24 @@ export default function App() {
               onOpenImport={() => setView("import")}
             />
           )}
+          {view === "generate" && (
+            <GenerateView
+              key={deck.id}
+              deck={deck}
+              macros={settings.macros}
+              ai={settings.ai}
+              status={aiStatus}
+              state={generate[deck.id] ?? emptyGenerateState()}
+              onState={updateGenerate}
+              onAiChange={(ai) => setSettings({ ...settings, ai })}
+              onAdd={(cards) => {
+                const kept = deck.cards.filter((c) => !isEmptyCard(c, deck.fields));
+                setDeck({ ...deck, cards: [...kept, ...cards] });
+              }}
+              onOpenSettings={() => setView("settings")}
+              notify={notify}
+            />
+          )}
           {view === "import" && (
             <ImportView
               key={deck.id}
@@ -357,6 +400,10 @@ export default function App() {
               settings={settings}
               deck={deck}
               build={build}
+              aiStatus={aiStatus}
+              aiChecking={aiChecking}
+              onRefreshAi={refreshAi}
+              onGeminiChange={(gemini) => setAiStatus((s) => (s ? { ...s, gemini } : s))}
               notify={notify}
               onSettingsChange={setSettings}
               onDeckChange={setDeck}

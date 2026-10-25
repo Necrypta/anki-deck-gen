@@ -11,6 +11,8 @@ const PATHS = {
   x: "M18 6L6 18M6 6l12 12",
   copy: "M9 9h10v10H9zM5 15V5h10",
   bracket: "M8 4H6v16h2M16 4h2v16h-2",
+  sparkle: "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z",
+  check: "M5 12l5 5L20 7",
 } as const;
 
 export type IconName = keyof typeof PATHS;

@@ -1,4 +1,5 @@
 import {
+  type AiSettings,
   DEFAULT_FIELDS,
   type Card,
   type Deck,
@@ -54,8 +55,12 @@ export function duplicateDeck(deck: Deck, existing: Deck[]): Deck {
   };
 }
 
+export function defaultAiSettings(): AiSettings {
+  return { writer: null, reader: null, extraUrls: [], density: "normal", focus: "balanced", tagSource: true };
+}
+
 export function defaultSettings(): Settings {
-  return { theme: "system", macros: defaultMacros() };
+  return { theme: "system", macros: defaultMacros(), ai: defaultAiSettings() };
 }
 
 export function newSession(): Session {
@@ -73,7 +78,11 @@ export function migrateSession(raw: unknown): Session {
     : rawSettings.macros && typeof rawSettings.macros === "object"
       ? fromLegacy(rawSettings.macros as Record<string, string>)
       : defaultMacros();
-  const settings: Settings = { theme: rawSettings.theme ?? "system", macros };
+  const settings: Settings = {
+    theme: rawSettings.theme ?? "system",
+    macros,
+    ai: { ...defaultAiSettings(), ...(rawSettings.ai ?? {}) },
+  };
 
   const rawDecks = (s.version === 2 ? s.decks : s.deck ? [s.deck] : []) as Partial<Deck>[];
   const decks: Deck[] = rawDecks

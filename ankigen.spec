@@ -7,7 +7,7 @@ a = Analysis(
     ["run.py"],
     pathex=[],
     datas=[("frontend/dist", "frontend/dist")],
-    hiddenimports=[],
+    hiddenimports=["keyring.backends.Windows"],
     excludes=["tkinter"],
 )
 pyz = PYZ(a.pure)
