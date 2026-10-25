@@ -20,6 +20,7 @@ A small, minimalist Windows desktop app for building Anki decks with first-class
 | `Alt+↑ / ↓` | Previous / next card |
 | `Ctrl+S` | Export the current deck as `.apkg` |
 | `Ctrl+Shift+N` | New deck |
+| `Ctrl+F` | Find in the material on the Generate page (`Enter` / `Shift+Enter` next / previous, `Esc` closes) |
 
 Name the deck with `::` to create subdecks, e.g. `Physics::Electromagnetism`. Then click **Export .apkg** and open the file in Anki.
 

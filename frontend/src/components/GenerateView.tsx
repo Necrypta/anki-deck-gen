@@ -24,6 +24,7 @@ import type {
   SourceFile,
 } from "../types";
 import { FieldInput } from "./FieldInput";
+import { FindTextarea } from "./FindTextarea";
 import { Icon } from "./Icon";
 import { MathPreview } from "./MathPreview";
 import { ModelSelect } from "./ModelSelect";
@@ -98,6 +99,20 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
   const [preview, setPreview] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
+  const [findSignal, setFindSignal] = useState(0);
+
+  // Ctrl+F searches the material (switching back from Preview if needed).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setPreview(false);
+        setFindSignal((n) => n + 1);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const writer = effectiveWriter(ai, status);
   const reader = effectiveReader(ai, status);
   const running = state.job?.state === "running";
@@ -324,11 +339,10 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
             <MathPreview text={state.material} macros={macros} placeholder="Nothing to preview yet." showErrors />
           </div>
         ) : (
-          <textarea
-            className="import-text"
+          <FindTextarea
             value={state.material}
-            spellCheck={false}
-            onChange={(e) => setMaterial(e.target.value)}
+            onChange={(v) => setMaterial(v)}
+            findSignal={findSignal}
             placeholder={
               state.file
                 ? "Click Read pages above; the text appears here for you to check and trim."

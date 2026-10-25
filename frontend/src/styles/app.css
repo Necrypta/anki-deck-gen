@@ -1805,3 +1805,101 @@ input.field-name.is-editable:focus {
 .mismatch-source {
   color: var(--text-2);
 }
+
+/* ---------- Find in text (Ctrl+F) ---------- */
+
+.find-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-height: 140px;
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.find-wrap .find-area {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-height: 0;
+  background: transparent;
+}
+.find-mirror {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  color: transparent;
+  border-color: transparent;
+  background: transparent;
+  pointer-events: none;
+  white-space: pre;
+}
+.find-mirror mark {
+  color: transparent;
+  background: color-mix(in srgb, var(--warn) 28%, transparent);
+  border-radius: 2px;
+}
+.find-mirror mark.is-current {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.find-bar {
+  position: absolute;
+  top: 6px;
+  right: 18px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 4px 3px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.12);
+  font-size: 12px;
+}
+.find-bar input {
+  width: 150px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.find-bar input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.find-count {
+  min-width: 38px;
+  padding: 0 4px;
+  text-align: center;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.find-count.is-none {
+  color: var(--danger);
+}
+.find-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+.find-btn:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.find-btn.is-on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
