@@ -8,6 +8,8 @@ interface Props {
   className?: string;
   /** Bump to open the find bar (the parent owns the Ctrl+F shortcut). */
   findSignal: number;
+  /** Bump to go to the next (or, with `back`, previous) match: F3 / Shift+F3. */
+  stepSignal?: { n: number; back: boolean };
 }
 
 /** Start offsets of every match of ``query`` in ``text``. */
@@ -25,7 +27,7 @@ export function findAll(text: string, query: string, matchCase: boolean): number
  * Matches are highlighted by a mirror layer drawn behind the transparent textarea,
  * since a textarea can't style parts of its own text.
  */
-export function FindTextarea({ value, onChange, placeholder, className = "", findSignal }: Props) {
+export function FindTextarea({ value, onChange, placeholder, className = "", findSignal, stepSignal }: Props) {
   const area = useRef<HTMLTextAreaElement>(null);
   const mirror = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -57,6 +59,18 @@ export function FindTextarea({ value, onChange, placeholder, className = "", fin
     input.current?.focus();
     input.current?.select();
   }, [open, focusTick]);
+
+  // F3 / Shift+F3: step when open, otherwise open the bar.
+  useEffect(() => {
+    if (!stepSignal?.n) return;
+    if (!open) {
+      setOpen(true);
+      setFocusTick((n) => n + 1);
+      return;
+    }
+    if (matches.length) setIndex((current + (stepSignal.back ? -1 : 1) + matches.length) % matches.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepSignal?.n]);
 
   // Bring the current match into view.
   useLayoutEffect(() => {

@@ -100,18 +100,41 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
   const [dragging, setDragging] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [findSignal, setFindSignal] = useState(0);
+  const [stepSignal, setStepSignal] = useState({ n: 0, back: false });
 
-  // Ctrl+F searches the material (switching back from Preview if needed).
+  const openFind = () => {
+    setPreview(false);
+    setFindSignal((n) => n + 1);
+  };
+
+  // Ctrl+F searches the material, F3 / Shift+F3 jump between matches. In the
+  // desktop app WebView2 swallows these keys, so ankigen/shortcuts.py catches
+  // them natively and sends an "ankigen:find" event instead; in a browser the
+  // keydown arrives as usual.
   useEffect(() => {
+    const find = (step: boolean, back: boolean) => {
+      if (step) setStepSignal((s) => ({ n: s.n + 1, back }));
+      else openFind();
+    };
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "f") {
         e.preventDefault();
-        setPreview(false);
-        setFindSignal((n) => n + 1);
+        find(false, false);
+      } else if (e.key === "F3") {
+        e.preventDefault();
+        find(true, e.shiftKey);
       }
     };
+    const onNative = (e: Event) => {
+      const d = (e as CustomEvent<{ shift?: boolean; step?: boolean }>).detail ?? {};
+      find(!!d.step, !!d.shift);
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("ankigen:find", onNative);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("ankigen:find", onNative);
+    };
   }, []);
   const writer = effectiveWriter(ai, status);
   const reader = effectiveReader(ai, status);
@@ -308,6 +331,9 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
                 {state.source}
               </span>
             )}
+            <button type="button" className="icon-btn" title="Find in text (Ctrl+F)" aria-label="Find in text" onClick={openFind}>
+              <Icon name="search" size={15} />
+            </button>
             <button type="button" className="ghost-btn" onClick={openFile}>
               <Icon name="file" size={14} /> Open file
             </button>
@@ -343,6 +369,7 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
             value={state.material}
             onChange={(v) => setMaterial(v)}
             findSignal={findSignal}
+            stepSignal={stepSignal}
             placeholder={
               state.file
                 ? "Click Read pages above; the text appears here for you to check and trim."

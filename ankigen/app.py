@@ -22,7 +22,7 @@ def frontend_index() -> Path:
 def run(dev: bool = False, debug: bool = False) -> None:
     import webview
 
-    from . import build_label, is_release
+    from . import build_label, is_release, shortcuts
     from .api import Api
 
     api = Api()
@@ -42,4 +42,5 @@ def run(dev: bool = False, debug: bool = False) -> None:
         background_color="#fafafa",
     )
     api._attach(window)
+    window.events.shown += lambda: shortcuts.install(window)
     webview.start(debug=debug or dev, http_server=not dev, private_mode=False)
