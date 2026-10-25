@@ -4,6 +4,8 @@ Each pull request adds a line under **Unreleased**. Releasing moves those lines 
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-25
+
 - **Multiple decks:** work on several decks at once. They're listed in the sidebar with **New deck** (`Ctrl+Shift+N`), duplicate and delete (with undo). Each deck keeps its own cards, note type and tags. Your existing deck carries over automatically.
 - **Custom note type has its own field designer:** rename, reorder, add and remove fields for the whole deck, with presets like *Quantity · Formula · Units*. Batch input is now one click away via **Import batch…** in the editor.
 - **Switching note types never discards content.** Fields are kept in order and only relabelled, and anything a smaller type can't show is kept and comes back. Each deck remembers its Custom layout. Layout presets stay available on the Custom tab and keep your content.

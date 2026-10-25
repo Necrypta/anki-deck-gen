@@ -1,6 +1,6 @@
 """Anki Deck Generator: build .apkg decks with LaTeX from text."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 
 def build_label() -> str:
