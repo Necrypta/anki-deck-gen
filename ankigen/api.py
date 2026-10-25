@@ -16,8 +16,11 @@ from functools import wraps
 from pathlib import Path
 from typing import Any
 
+from .ai import catalog, secrets
+from .ai.generate import Request, generate_cards
+from .ai.jobs import Jobs
 from .deck import build_apkg
-from .latex import DEFAULT_MACROS
+from .latex import DEFAULT_MACROS, normalize_macros
 from .models import DeckSpec
 from .parsers import PARSERS, parse_text
 
@@ -58,6 +61,7 @@ class Api:
     def __init__(self, data_dir: Path | None = None) -> None:
         self._window: Any = None
         self._data_dir = data_dir
+        self._jobs = Jobs()
 
     # pywebview tries to expose every public attribute, so keep these private.
     def _attach(self, window: Any) -> None:
@@ -141,3 +145,68 @@ class Api:
         tmp.write_text(json.dumps(session, ensure_ascii=False), encoding="utf-8")
         tmp.replace(f)
         return {}
+
+    # ------------------------------------------------------------------ AI
+
+    @_safe
+    def ai_status(self, extra_urls: list[str] | None = None) -> dict[str, Any]:
+        """Local runtimes (running or not, with models), Gemini, and suggestions."""
+        runtimes = catalog.local_status(extra_urls)
+        return {
+            "runtimes": runtimes,
+            "gemini": catalog.gemini_status(),
+            "suggested": {
+                "read": catalog.suggest(runtimes, "read"),
+                "cards": catalog.suggest(runtimes, "cards"),
+            },
+        }
+
+    @_safe
+    def set_api_key(self, key: str) -> dict[str, Any]:
+        """Check the key against Gemini, then store it in the credential store."""
+        key = (key or "").strip()
+        if not key:
+            raise ValueError("Paste a key first")
+        from .ai.providers import GEMINI_URL, make_provider
+
+        make_provider("gemini", GEMINI_URL, api_key=key).list_models()  # raises if it's wrong
+        stored = secrets.set_key(key)
+        return {"stored": stored, "gemini": catalog.gemini_status()}
+
+    @_safe
+    def clear_api_key(self) -> dict[str, Any]:
+        secrets.clear_key()
+        return {}
+
+    @_safe
+    def start_generate(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Start writing cards in the background; poll with ``job_status``."""
+        ref = request.get("model") or {}
+        provider = catalog.provider_for(ref, "cards")
+        req = Request(
+            material=request.get("material", ""),
+            fields=list(request.get("fields") or ["Front", "Back"]),
+            note_type=request.get("note_type", "basic"),
+            macros=normalize_macros(request.get("macros")),
+            density=request.get("density", "normal"),
+            focus=request.get("focus", "balanced"),
+            source=request.get("source", ""),
+        )
+        if not req.material.strip():
+            raise ValueError("Add some material first")
+        job = self._jobs.start(
+            lambda job: generate_cards(
+                provider, ref.get("model", ""), req, progress=job.progress, cancel=job.cancel
+            )
+        )
+        return {"job": job.id}
+
+    @_safe
+    def job_status(self, job_id: str, since: int = 0) -> dict[str, Any]:
+        return self._jobs.get(job_id).snapshot(since)
+
+    @_safe
+    def cancel_job(self, job_id: str) -> dict[str, Any]:
+        self._jobs.get(job_id).cancel.set()
+        return {}
+

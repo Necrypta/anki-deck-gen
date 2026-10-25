@@ -23,6 +23,17 @@ A small, minimalist Windows desktop app for building Anki decks with first-class
 
 Name the deck with `::` to create subdecks, e.g. `Physics::Electromagnetism`. Then click **Export .apkg** and open the file in Anki.
 
+### Generating cards with AI
+
+Open **Generate**, paste notes or a textbook section (or open a `.txt` / `.md` file), and click **Generate cards**. Suggested cards appear on the right as they're written. Untick or edit any of them, then **Add to deck**. Cards use the current deck's note type and fields, and your LaTeX macros.
+
+Set up a model under **Settings → AI card generation**:
+
+- **On this computer (recommended):** install [Ollama](https://ollama.com/download), then run `ollama pull qwen3:8b` (it writes the cards; about 5 GB). The app finds it automatically, and LM Studio, llama.cpp and Jan work too. It's free, private and works offline.
+- **Online:** paste a free [Gemini API key](https://aistudio.google.com/apikey). It gives the best cards, but the free tier can take a few minutes per request. The key is kept in Windows Credential Manager.
+
+PDFs and images (with equations read straight from the page) come in the next update.
+
 There's a ready-made example in [`examples/`](examples): `physics_sample.txt` is the source and `physics_sample.apkg` is the result.
 
 ## Installing
@@ -96,7 +107,7 @@ npm --prefix frontend run dev      # Vite on :5173
 python -m ankigen --dev            # desktop window pointed at Vite
 ```
 
-To work on the UI in an ordinary browser, run `python -m ankigen.devserver` (the API on :5174) alongside `npm run dev` and open http://localhost:5173. Exports land in `./exports`.
+To work on the UI in an ordinary browser, run `python -m ankigen.devserver` (the API on :5174) alongside `npm run dev` and open http://localhost:5173. Exports land in `./exports`. Set `ANKIGEN_FAKE_AI=1` for a pretend AI model that answers instantly, for working on the Generate page without a real model.
 
 ### Building the .exe locally
 

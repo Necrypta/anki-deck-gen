@@ -1,5 +1,6 @@
 import { useState } from "react";
-import type { BuildInfo, Deck, Settings, Theme } from "../types";
+import type { AiStatus, BuildInfo, Deck, Settings, Theme } from "../types";
+import { AiSettings } from "./AiSettings";
 import { MacroEditor } from "./MacroEditor";
 import { MathPreview } from "./MathPreview";
 import { Segmented } from "./Segmented";
@@ -9,12 +10,27 @@ interface Props {
   settings: Settings;
   deck: Deck;
   build: BuildInfo;
+  aiStatus: AiStatus | null;
+  aiChecking: boolean;
+  onRefreshAi: () => void;
+  onGeminiChange: (gemini: AiStatus["gemini"]) => void;
   onSettingsChange: (s: Settings) => void;
   onDeckChange: (d: Deck) => void;
   notify: (msg: string, kind?: "error" | "info") => void;
 }
 
-export function SettingsView({ settings, deck, build, onSettingsChange, onDeckChange, notify }: Props) {
+export function SettingsView({
+  settings,
+  deck,
+  build,
+  aiStatus,
+  aiChecking,
+  onRefreshAi,
+  onGeminiChange,
+  onSettingsChange,
+  onDeckChange,
+  notify,
+}: Props) {
   const [sample, setSample] = useState("$\\dv[2]{x}{t} = -\\omega^2 x$, $\\pdv{\\psi}{t} = \\frac{1}{i\\hbar}\\hat H \\psi$, $\\ce{^{238}_{92}U -> ^{234}_{90}Th + \\alpha}$");
 
   return (
@@ -58,6 +74,16 @@ export function SettingsView({ settings, deck, build, onSettingsChange, onDeckCh
           </div>
         </div>
       </section>
+
+      <AiSettings
+        ai={settings.ai}
+        status={aiStatus}
+        checking={aiChecking}
+        onAiChange={(ai) => onSettingsChange({ ...settings, ai })}
+        onRefresh={onRefreshAi}
+        onGeminiChange={onGeminiChange}
+        notify={notify}
+      />
 
       <section className="settings-group">
         <h2>LaTeX macros</h2>

@@ -4,6 +4,9 @@ Each pull request adds a line under **Unreleased**. Releasing moves those lines 
 
 ## [Unreleased]
 
+- **Generate cards with AI:** a new **Generate** page turns pasted notes or a `.txt` / `.md` file into suggested cards for the current deck, which you review, edit and add. It uses the deck's note type, fields and your macros, with options for how many cards and what to focus on. Cards can be tagged with their source file.
+- **Settings → AI card generation:** finds Ollama, LM Studio, llama.cpp and Jan running on this computer and lists their models, or uses Gemini with a free API key stored in Windows Credential Manager. Suggests qwen3:8b when it's installed.
+
 - **AI bake-off tool** (`ai-bakeoff.exe` in test builds): compares local models (Ollama, LM Studio, llama.cpp, Jan) and optionally Gemini on your own PDF pages, and writes a report with transcriptions, cards, speed and GPU fit. Groundwork for AI card generation.
 - Bake-off fixes from the first real run: generation is capped so thinking models can't run for minutes, thinking-only replies give a clear error, leaked tokens and repetition loops are cleaned up and flagged, cards with math outside `$…$` are flagged, and Gemini uses the newest Flash model instead of a retired one.
 - Second round: Gemini thinks less and reads all selected PDF pages in one request; rate-limit waits are shown and counted; card prompts ask for short answers that don't repeat the question; stray LaTeX headings and unwrapped `aligned` blocks in transcriptions are fixed; reading defaults to a context size that fits an 8 GB GPU.

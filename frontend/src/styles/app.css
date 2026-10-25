@@ -1414,3 +1414,253 @@ input.field-name.is-editable:focus {
     animation: none !important;
   }
 }
+
+/* ---------- Generate ---------- */
+
+.material-preview {
+  flex: 1;
+  min-height: 200px;
+  overflow: auto;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.generate-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+.generate-options label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.generate-options .option {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.generate-options label.grow {
+  flex: 1;
+  min-width: 200px;
+}
+
+.model-select,
+.generate-options select,
+.setting-control input:not([type="checkbox"]) {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  min-width: 0;
+}
+.model-select {
+  width: 100%;
+}
+
+.generate-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.job-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.job-bar.is-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.job-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.progress {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s var(--ease);
+}
+.progress-fill.is-indeterminate {
+  width: 30%;
+  animation: progress-slide 1.2s var(--ease) infinite;
+}
+@keyframes progress-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+.review-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+.review-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: start;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.review-card > input {
+  margin-top: 3px;
+}
+.review-card.is-off .review-body {
+  opacity: 0.45;
+}
+.review-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.review-front {
+  font-weight: 500;
+}
+.review-back {
+  color: var(--text-2);
+}
+.review-label {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+}
+.review-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.flag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 12px;
+}
+
+/* ---------- AI settings ---------- */
+
+.runtime-list {
+  list-style: none;
+  margin: 4px 0 12px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.runtime-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+}
+.runtime-list li + li {
+  border-top: 1px solid var(--border);
+}
+.runtime-list li.is-off {
+  color: var(--text-3);
+}
+.runtime-name {
+  font-weight: 500;
+  min-width: 80px;
+}
+.runtime-state {
+  margin-left: auto;
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border-strong);
+  flex: none;
+}
+.dot.is-on {
+  background: var(--success);
+}
+
+.callout {
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.callout pre {
+  margin: 8px 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  user-select: all;
+}
+
+.setting-control.inline {
+  display: flex;
+  gap: 8px;
+}
+.setting-control.inline input {
+  flex: 1;
+}
+
+.url-chip {
+  display: inline-flex;
+  gap: 6px;
+  margin-right: 10px;
+  font-family: var(--mono);
+}
+
+.setting-help.is-error {
+  color: var(--danger);
+}
+
+.setting-help a {
+  color: var(--accent);
+}
+
+/* Long file names shrink with an ellipsis instead of pushing buttons out of the pane. */
+.pane-head > .segmented {
+  flex: none;
+}
+.pane-head .toolbar-right {
+  min-width: 0;
+}
+.toolbar-right > button {
+  flex: none;
+}
+.file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -14,6 +14,7 @@ dependencies = [
     "pywebview>=5.0",
     "pypdfium2>=4.30",
     "Pillow>=10",
+    "keyring>=24",
 ]
 
 [project.optional-dependencies]

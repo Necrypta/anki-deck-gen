@@ -4,7 +4,7 @@
 // browser (`npm run dev`), calls go over HTTP to `python -m ankigen.devserver`
 // through Vite's /api proxy, so the UI can be developed with hot reload.
 
-import type { Deck, MacroDef, ParseResult, Session } from "./types";
+import type { AiStatus, Deck, JobStatus, MacroDef, ModelRef, ParseResult, Session } from "./types";
 
 type Result<T> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -83,4 +83,20 @@ export const api = {
   // Saved sessions may be older shapes; App runs them through migrateSession().
   loadSession: () => call<{ session: unknown }>("load_session"),
   saveSession: (session: Session) => call<object>("save_session", session),
+
+  aiStatus: (extraUrls: string[]) => call<AiStatus>("ai_status", extraUrls),
+  setApiKey: (key: string) => call<{ stored: boolean; gemini: AiStatus["gemini"] }>("set_api_key", key),
+  clearApiKey: () => call<object>("clear_api_key"),
+  startGenerate: (request: {
+    material: string;
+    fields: string[];
+    note_type: string;
+    macros: MacroDef[];
+    density: string;
+    focus: string;
+    source: string;
+    model: ModelRef;
+  }) => call<{ job: string }>("start_generate", request),
+  jobStatus: (job: string, since: number) => call<JobStatus>("job_status", job, since),
+  cancelJob: (job: string) => call<object>("cancel_job", job),
 };

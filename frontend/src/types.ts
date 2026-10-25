@@ -1,6 +1,6 @@
 export type NoteType = "basic" | "reversed" | "cloze" | "custom";
 export type Theme = "system" | "light" | "dark";
-export type View = "editor" | "import" | "settings";
+export type View = "editor" | "generate" | "import" | "settings";
 
 export interface Card {
   id: string;
@@ -31,9 +31,32 @@ export interface MacroDef {
   body: string;
 }
 
+/** Which model to use: a backend ("ollama", "openai", "gemini"), its URL and the model id. */
+export interface ModelRef {
+  backend: string;
+  url: string;
+  model: string;
+}
+
+export type Density = "few" | "normal" | "thorough";
+export type Focus = "balanced" | "equations" | "definitions" | "concepts";
+
+export interface AiSettings {
+  /** Writes cards from the material. null = use the suggested model. */
+  writer: ModelRef | null;
+  /** Reads PDF pages and images (needs vision); used from v0.4. */
+  reader: ModelRef | null;
+  /** Extra OpenAI-compatible servers the user added. */
+  extraUrls: string[];
+  density: Density;
+  focus: Focus;
+  tagSource: boolean;
+}
+
 export interface Settings {
   theme: Theme;
   macros: MacroDef[];
+  ai: AiSettings;
 }
 
 export interface BuildInfo {
@@ -76,3 +99,45 @@ export const NOTE_TYPE_LABELS: Record<NoteType, string> = {
   cloze: "Cloze",
   custom: "Custom",
 };
+
+export interface AiModel {
+  id: string;
+  vision: boolean | null;
+  thinking: boolean;
+  detail: string;
+}
+
+export interface AiRuntime {
+  name: string;
+  backend: string;
+  url: string;
+  /** null when it isn't running. */
+  status: string | null;
+  error: string;
+  models: AiModel[];
+}
+
+export interface AiStatus {
+  runtimes: AiRuntime[];
+  gemini: { has_key: boolean; models: AiModel[]; default?: string | null; fast?: string | null; error: string };
+  suggested: { read: ModelRef | null; cards: ModelRef | null };
+}
+
+export interface GeneratedCard {
+  fields: Record<string, string>;
+  tags: string[];
+  flags: { bare_latex: string[] };
+}
+
+export interface JobStatus {
+  id: string;
+  state: "running" | "done" | "error" | "cancelled";
+  error: string;
+  done: number;
+  total: number;
+  message: string;
+  elapsed: number;
+  cards: GeneratedCard[];
+  card_count: number;
+  warnings: string[];
+}

@@ -5,7 +5,7 @@
 The shared backend is in `ankigen/ai/`. It's runtime- and model-agnostic: Ollama, any OpenAI-compatible server (LM Studio, llama.cpp, Jan, vLLM, or hosted services such as OpenRouter and DeepSeek), and Gemini.
 
 - **Step 0 (done):** `scripts/ai_bakeoff.py` compares models on real pages to choose suggested defaults.
-- **Text and Markdown → cards:**
+- **Text and Markdown → cards (done in 0.3):**
   - a Generate page: source → editable Markdown → options → review and add;
   - Settings → AI, with detected runtimes, model pickers and a Gemini key stored in Windows Credential Manager.
 - **PDFs and images:**
