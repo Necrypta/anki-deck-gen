@@ -22,14 +22,18 @@ def frontend_index() -> Path:
 def run(dev: bool = False, debug: bool = False) -> None:
     import webview
 
+    from . import build_label, is_release
     from .api import Api
 
     api = Api()
+    title = "Anki Deck Generator"
+    if not is_release():
+        title += f" (test build: {build_label()})"
     # A plain path (not file://) makes pywebview serve it over its local HTTP
     # server; WebView2 refuses ES-module scripts from file:// URLs.
     url = DEV_URL if dev else str(frontend_index())
     window = webview.create_window(
-        "Anki Deck Generator",
+        title,
         url,
         js_api=api,
         width=1200,

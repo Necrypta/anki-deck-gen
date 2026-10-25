@@ -1,0 +1,55 @@
+name: Build app
+description: Test the backend, build the UI, stamp the build label and package dist/AnkiDeckGenerator.exe
+
+inputs:
+  label:
+    description: Build label shown in the app, e.g. "PR #4 · a1b2c3d" or "v0.2.0"
+    required: true
+  check-version:
+    description: Fail unless the label is v<version> from pyproject.toml
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        cache: pip
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+        cache: npm
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install Python deps
+      shell: pwsh
+      run: pip install -e ".[dev]"
+
+    - name: Stamp build label
+      shell: pwsh
+      env:
+        LABEL: ${{ inputs.label }}
+      run: |
+        if ("${{ inputs.check-version }}" -eq "true") {
+          python scripts/stamp_build.py "$env:LABEL" --check-version
+        } else {
+          python scripts/stamp_build.py "$env:LABEL"
+        }
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    - name: Test backend
+      shell: pwsh
+      run: pytest -q
+
+    - name: Build frontend
+      shell: pwsh
+      working-directory: frontend
+      run: |
+        npm ci
+        npm run build
+
+    - name: Package exe
+      shell: pwsh
+      run: pyinstaller --noconfirm --clean ankigen.spec

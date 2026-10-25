@@ -23,8 +23,15 @@ from .parsers import PARSERS, parse_text
 
 
 def app_data_dir() -> Path:
+    """Where the autosaved session lives.
+
+    Test and dev builds use a separate folder so trying out a PR build can
+    never overwrite the work saved by the installed release.
+    """
+    from . import is_release
+
     base = os.environ.get("APPDATA") or os.path.join(Path.home(), ".config")
-    path = Path(base) / "AnkiDeckGenerator"
+    path = Path(base) / ("AnkiDeckGenerator" if is_release() else "AnkiDeckGenerator-test")
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -62,8 +69,15 @@ class Api:
 
     @_safe
     def info(self) -> dict[str, Any]:
-        from . import __version__
-        return {"version": __version__, "formats": list(PARSERS), "default_macros": DEFAULT_MACROS}
+        from . import __version__, build_label, is_release
+        return {
+            "version": __version__,
+            "build": build_label(),
+            "release": is_release(),
+            "data_dir": str(self._data_dir or app_data_dir()),
+            "formats": list(PARSERS),
+            "default_macros": DEFAULT_MACROS,
+        }
 
     @_safe
     def parse_text(self, text: str, fmt: str = "block", options: dict | None = None) -> dict[str, Any]:

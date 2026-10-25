@@ -23,7 +23,35 @@ Name the deck with `::` to create subdecks, e.g. `Physics::Electromagnetism`. Th
 
 There's a ready-made example in [`examples/`](examples): `physics_sample.txt` is the source and `physics_sample.apkg` is the result.
 
-## Running from source
+## Installing
+
+Download **`AnkiDeckGenerator-Setup-X.Y.Z.exe`** from the [Releases page](https://github.com/Necrypta/anki-deck-gen/releases) and run it. It installs for your user only (no admin prompt), adds a Start-menu shortcut, and upgrades over the previous version. Uninstall it from *Settings → Apps*. A portable `.exe` is attached to each release as well.
+
+Windows SmartScreen will warn about the unsigned app: choose **More info → Run anyway**.
+
+## Testing updates
+
+Every change comes as a pull request, and every pull request gets its own test build:
+
+1. Open the PR. A bot comment links **Download AnkiDeckGenerator.exe**, and updates the link after each new push.
+2. Unzip it and run it. Nothing to install.
+3. Test, then reply on the PR (or in chat) with "merge" or what to fix.
+
+Test builds are clearly marked: a yellow **Test build · PR #N · sha** badge in the sidebar and a matching window title. They save to `%APPDATA%\AnkiDeckGenerator-test`, so they never touch the work saved by your installed copy, which uses `%APPDATA%\AnkiDeckGenerator`. Settings shows which folder a build is using.
+
+## Releasing
+
+1. Move the **Unreleased** lines in [CHANGELOG.md](CHANGELOG.md) under a new `## [X.Y.Z]` heading.
+2. Bump `version` in `pyproject.toml` and `__version__` in `ankigen/__init__.py`.
+3. Merge, then tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+
+The `release` workflow checks that the tag matches the version, builds the installer with Inno Setup (`installer/AnkiDeckGenerator.iss`), and publishes a GitHub Release with that changelog section as its notes. Pull requests that change the installer get a dry run that builds it without publishing.
+
+## Development
+
+### Running from source
+
+Only needed if you want to change code yourself. `.\scripts\run_from_source.ps1 [branch]` does all of this in one go.
 
 Requirements: Python 3.10+, Node 18+, and on Windows the WebView2 runtime (already installed on Windows 10/11).
 
@@ -37,7 +65,7 @@ npm --prefix frontend run build
 python -m ankigen
 ```
 
-### Development (hot reload)
+### Hot reload
 
 ```powershell
 npm --prefix frontend run dev      # Vite on :5173
@@ -46,13 +74,11 @@ python -m ankigen --dev            # desktop window pointed at Vite
 
 To work on the UI in an ordinary browser, run `python -m ankigen.devserver` (the API on :5174) alongside `npm run dev` and open http://localhost:5173. Exports land in `./exports`.
 
-### Building the .exe
+### Building the .exe locally
 
 ```powershell
 .\scripts\build_windows.ps1        # -> dist\AnkiDeckGenerator.exe
 ```
-
-GitHub Actions does the same on every push to `main`. Download `AnkiDeckGenerator-windows` from the run's artifacts.
 
 ### Command line
 

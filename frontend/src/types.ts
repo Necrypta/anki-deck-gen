@@ -21,6 +21,13 @@ export interface Settings {
   macros: Record<string, string>;
 }
 
+export interface BuildInfo {
+  version: string;
+  build: string;
+  release: boolean;
+  dataDir: string;
+}
+
 export interface Session {
   version: 1;
   deck: Deck;

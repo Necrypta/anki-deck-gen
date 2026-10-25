@@ -6,7 +6,7 @@ import { ImportView } from "./components/ImportView";
 import { SettingsView } from "./components/SettingsView";
 import { emptyCard, exportableCards, isEmptyCard, newSession, uid } from "./lib/deck";
 import { hasMathProblem } from "./lib/math";
-import type { Card, Deck, Session, Settings, View } from "./types";
+import type { BuildInfo, Card, Deck, Session, Settings, View } from "./types";
 
 interface Toast {
   id: number;
@@ -26,7 +26,7 @@ export default function App() {
   const [view, setView] = useState<View>("editor");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
-  const [version, setVersion] = useState("");
+  const [build, setBuild] = useState<BuildInfo>({ version: "", build: "", release: true, dataDir: "" });
   const [exporting, setExporting] = useState(false);
   const toastTimer = useRef<number>();
 
@@ -37,7 +37,7 @@ export default function App() {
       const s = saved.ok && saved.session?.version === 1 ? saved.session : newSession();
       setSession(s);
       setSelectedId(s.deck.cards[0]?.id ?? null);
-      if (info.ok) setVersion(info.version);
+      if (info.ok) setBuild({ version: info.version, build: info.build, release: info.release, dataDir: info.data_dir });
     })();
   }, []);
 
@@ -169,6 +169,11 @@ export default function App() {
           </span>
           <span className="brand-name">Deck Generator</span>
         </div>
+        {!build.release && build.build && (
+          <div className="build-badge" title={`Saves to ${build.dataDir}`}>
+            Test build · {build.build}
+          </div>
+        )}
         {NAV.map((n) => (
           <button
             key={n.view}
@@ -251,7 +256,7 @@ export default function App() {
             <SettingsView
               settings={settings}
               deck={deck}
-              version={version}
+              build={build}
               onSettingsChange={setSettings}
               onDeckChange={setDeck}
             />
