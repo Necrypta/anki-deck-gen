@@ -61,12 +61,20 @@ Put supporting detail in an extra field if there is one.
 - Use LaTeX for ALL mathematics: inline $...$, display $$...$$. Never use \\( \\) or \\[ \\]. \
 Write $x$ not $ x $, and no \\text{{ }} spacers.
 - Use only facts from the material. Do not invent values, names or results.
-{macros}
+- Copy mathematics exactly as the material writes it: never drop terms, rename symbols, \
+simplify, or change the order of a derivative.
+{labels}{macros}
 {note_type}
 Reply with JSON only, in exactly this shape:
 {shape}
 Example of one good card (a different topic, for style only):
 {example}"""
+
+
+LABEL_RULE = """\
+- Equations in the material are labelled like [E1]. To put one on a card, write only its \
+label, e.g. "Back": "[E3]" or "The Hermite recurrence: [E3]". Do not retype a labelled equation.
+"""
 
 
 def is_ocr_model(model: str) -> bool:
@@ -150,9 +158,16 @@ def card_messages(
     density: str = "normal",
     focus: str = "balanced",
     avoid: list[str] | None = None,
+    labelled: bool = False,
 ) -> tuple[str, str]:
-    """(system, user) for writing cards from a chunk of Markdown."""
+    """(system, user) for writing cards from a chunk of Markdown.
+
+    ``labelled``: the material's equations carry ``[E1]``-style labels that the
+    model should use instead of retyping. ``macros`` are only offered to the
+    model when given (retyping math into macros is where small models slip).
+    """
     system = CARD_SYSTEM.format(
+        labels=LABEL_RULE if labelled else "",
         macros=macro_rules(macros or []),
         note_type=note_type_rules(note_type, fields),
         shape=card_shape(fields),

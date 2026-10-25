@@ -56,7 +56,7 @@ export function duplicateDeck(deck: Deck, existing: Deck[]): Deck {
 }
 
 export function defaultAiSettings(): AiSettings {
-  return { writer: null, reader: null, extraUrls: [], density: "normal", focus: "balanced", tagSource: true };
+  return { writer: null, reader: null, extraUrls: [], density: "normal", focus: "balanced", tagSource: true, useMacros: false };
 }
 
 export function defaultSettings(): Settings {

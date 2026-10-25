@@ -97,6 +97,7 @@ export const api = {
     density: string;
     focus: string;
     source: string;
+    use_macros: boolean;
     model: ModelRef;
   }) => call<{ job: string }>("start_generate", request),
   openSourceFile: () => call<{ cancelled?: boolean } & Partial<Source>>("open_source_file"),

@@ -52,8 +52,10 @@ def parse(text: str, fields: list[str] | None = None, **_: object) -> ParseResul
             continue
 
         m = _FIELD_RE.match(line)
-        if m and _starts_field(m.group(1).strip(), fields or result.fields) and not (
-            current_field and _inside_math(current.get(current_field, []))
+        if (
+            m
+            and _starts_field(m.group(1).strip(), fields or result.fields)
+            and not (current_field and _inside_math(current.get(current_field, [])))
         ):
             name = m.group(1).strip()
             if not current:
@@ -87,7 +89,9 @@ def _apply_directive(result: ParseResult, key: str, value: str, line: int) -> No
     elif key == "type":
         value = value.lower()
         if value not in NOTE_TYPES:
-            result.errors.append(ParseError(line, f"Unknown type '{value}'. Use: {', '.join(NOTE_TYPES)}"))
+            result.errors.append(
+                ParseError(line, f"Unknown type '{value}'. Use: {', '.join(NOTE_TYPES)}")
+            )
         else:
             result.note_type = value
     elif key == "tags":
@@ -151,8 +155,11 @@ def _validate(result: ParseResult, fields: list[str] | None) -> None:
         standard = DEFAULT_FIELDS[result.note_type]
         unknown = [f for f in result.fields or [] if f not in standard]
         if unknown:
-            result.errors.append(ParseError(
-                0, f"Fields {', '.join(unknown)} aren't part of the '{result.note_type}' type "
-                   "and will be ignored. Use '# type: custom' to keep them.",
-            ))
+            result.errors.append(
+                ParseError(
+                    0,
+                    f"Fields {', '.join(unknown)} aren't part of the '{result.note_type}' type "
+                    "and will be ignored. Use '# type: custom' to keep them.",
+                )
+            )
         result.fields = list(standard)

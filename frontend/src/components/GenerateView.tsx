@@ -238,6 +238,7 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
       density: ai.density,
       focus: ai.focus,
       source: ai.tagSource ? state.source : "",
+      use_macros: ai.useMacros,
       model: writer,
     });
     if (!res.ok) return notify(res.error, "error");
@@ -470,12 +471,40 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
                             </div>
                           ) : null,
                         )}
-                    {(problems.length > 0 || bare.length > 0) && (
+                    {(problems.length > 0 || bare.length > 0 || (c.flags.unknown_labels?.length ?? 0) > 0) && (
                       <div className="review-flags">
                         {problems.length > 0 && <span className="flag">LaTeX error in {problems.join(", ")}</span>}
                         {bare.length > 0 && <span className="flag">Math outside $…$ in {bare.join(", ")}</span>}
+                        {(c.flags.unknown_labels?.length ?? 0) > 0 && (
+                          <span className="flag">Unknown equation {c.flags.unknown_labels!.join(", ")}</span>
+                        )}
                       </div>
                     )}
+                    {(c.flags.mismatch ?? [])
+                      .filter((m) => (c.fields[m.field] ?? "").includes(m.got))
+                      .map((m, mi) => (
+                        <div key={mi} className="mismatch">
+                          <div className="mismatch-head">
+                            <span className="flag">Equation differs from the material ({m.field})</span>
+                            <button
+                              type="button"
+                              className="link-btn"
+                              onClick={() =>
+                                updateCard(c.key, (x) => ({
+                                  ...x,
+                                  fields: { ...x.fields, [m.field]: (x.fields[m.field] ?? "").replace(m.got, m.source) },
+                                }))
+                              }
+                            >
+                              Use the material's version
+                            </button>
+                          </div>
+                          <div className="mismatch-source">
+                            <span className="review-label">Material</span>
+                            <MathPreview text={m.source} macros={macros} />
+                          </div>
+                        </div>
+                      ))}
                   </div>
                   <button
                     type="button"

@@ -180,6 +180,14 @@ class FakeProvider(Provider):
             card = {f: "" for f in fields}
             card[fields[0]] = f"What does this say: {words[:60]}?"
             if len(fields) > 1:
-                card[fields[1]] = words[:200]
+                labels = re.findall(r"\[E\d+\]", words)
+                # Answer with an equation label, like a real model should; and
+                # imitate the classic slip (second derivative retyped as first).
+                card[fields[1]] = " ".join(labels) if labels else words[:200]
+                if "d^2" in words and labels:
+                    slip = re.search(r"\$\$(.+?)\$\$", words)
+                    if slip:
+                        wrong = slip.group(1).replace("d^2", "d").replace("dx^2", "dx")
+                        cards.append({**card, fields[1]: f"$${wrong}$$"})
             cards.append(card)
         return ChatResult(json.dumps({"cards": cards}), seconds=0.01)

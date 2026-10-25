@@ -51,6 +51,8 @@ export interface AiSettings {
   density: Density;
   focus: Focus;
   tagSource: boolean;
+  /** Let the model rewrite math with the user's macros (small models slip doing this). */
+  useMacros: boolean;
 }
 
 export interface Settings {
@@ -126,7 +128,13 @@ export interface AiStatus {
 export interface GeneratedCard {
   fields: Record<string, string>;
   tags: string[];
-  flags: { bare_latex: string[] };
+  flags: {
+    bare_latex: string[];
+    /** Math the model retyped that nearly matches the material: the material's version is in `source`. */
+    mismatch?: { field: string; got: string; source: string }[];
+    /** [E7]-style labels that didn't match any equation. */
+    unknown_labels?: string[];
+  };
 }
 
 export interface JobStatus {

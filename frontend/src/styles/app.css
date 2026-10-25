@@ -1782,3 +1782,26 @@ input.field-name.is-editable:focus {
 .generate .import-source {
   overflow-y: auto;
 }
+
+.mismatch {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--warn-soft);
+}
+.mismatch-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.mismatch .flag {
+  background: transparent;
+  padding: 0;
+}
+.mismatch-source {
+  color: var(--text-2);
+}

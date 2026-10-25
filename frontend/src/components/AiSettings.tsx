@@ -191,6 +191,24 @@ export function AiSettings({ ai, status, checking, onAiChange, onRefresh, onGemi
 
       <div className="setting-row">
         <div>
+          <div className="setting-label">Let AI use my LaTeX macros</div>
+          <div className="setting-help">
+            Off: equations are copied exactly from the material. On: the model may rewrite them with your macros (like{" "}
+            <code>\dv[2]{"{x}{t}"}</code>). Strong models like Gemini do this well; small local ones can slip.
+          </div>
+        </div>
+        <div className="setting-control">
+          <input
+            type="checkbox"
+            checked={ai.useMacros}
+            onChange={(e) => onAiChange({ ...ai, useMacros: e.target.checked })}
+            aria-label="Let AI use my LaTeX macros"
+          />
+        </div>
+      </div>
+
+      <div className="setting-row">
+        <div>
           <div className="setting-label">Tag cards with their source</div>
           <div className="setting-help">
             Adds a tag like <code>source::Hassani_ch8</code> from the file name.

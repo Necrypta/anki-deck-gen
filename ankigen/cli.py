@@ -1,7 +1,7 @@
 """Headless conversion: text file in, .apkg out.
 
-    python -m ankigen.cli examples/physics_sample.txt -o physics.apkg
-    python -m ankigen.cli cards.tsv --format delimited --fields Front,Back
+python -m ankigen.cli examples/physics_sample.txt -o physics.apkg
+python -m ankigen.cli cards.tsv --format delimited --fields Front,Back
 """
 
 from __future__ import annotations

@@ -47,6 +47,7 @@ def _safe(fn: Callable[..., Any]) -> Callable[..., dict[str, Any]]:
             return {"ok": True, **(fn(*args, **kwargs) or {})}
         except Exception as exc:  # noqa: BLE001 - surfaced in the UI as a toast
             return {"ok": False, "error": str(exc)}
+
     return wrapper
 
 
@@ -79,6 +80,7 @@ class Api:
     @_safe
     def info(self) -> dict[str, Any]:
         from . import __version__, build_label, is_release
+
         return {
             "version": __version__,
             "build": build_label(),
@@ -89,7 +91,9 @@ class Api:
         }
 
     @_safe
-    def parse_text(self, text: str, fmt: str = "block", options: dict | None = None) -> dict[str, Any]:
+    def parse_text(
+        self, text: str, fmt: str = "block", options: dict | None = None
+    ) -> dict[str, Any]:
         return parse_text(text, fmt, **(options or {})).to_dict()
 
     @_safe
@@ -196,6 +200,7 @@ class Api:
             density=request.get("density", "normal"),
             focus=request.get("focus", "balanced"),
             source=request.get("source", ""),
+            use_macros=bool(request.get("use_macros")),
         )
         if not req.material.strip():
             raise ValueError("Add some material first")
@@ -254,4 +259,3 @@ class Api:
     def cancel_job(self, job_id: str) -> dict[str, Any]:
         self._jobs.get(job_id).cancel.set()
         return {}
-
