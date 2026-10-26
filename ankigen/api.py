@@ -12,6 +12,7 @@ import re
 import subprocess
 import sys
 from collections.abc import Callable
+from datetime import datetime
 from functools import wraps
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,17 @@ def app_data_dir() -> Path:
     path = Path(base) / ("AnkiDeckGenerator" if is_release() else "AnkiDeckGenerator-test")
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+KEEP_BACKUPS = 10
+
+
+def _stamp() -> str:
+    return datetime.now().astimezone().strftime("%Y%m%d-%H%M%S-%f")
+
+
+def _version_key(version: str) -> tuple[int, ...]:
+    return tuple(int(n) for n in re.findall(r"\d+", version)[:3])
 
 
 def _safe(fn: Callable[..., Any]) -> Callable[..., dict[str, Any]]:
@@ -142,18 +154,61 @@ class Api:
 
     @_safe
     def load_session(self) -> dict[str, Any]:
+        """The saved session, after backing it up.
+
+        A file that can't be read is moved aside rather than left for the next
+        autosave to overwrite with an empty deck.
+        """
+        from . import __version__
+
         f = self._session_file
         if not f.exists():
             return {"session": None}
-        return {"session": json.loads(f.read_text(encoding="utf-8"))}
+        try:
+            session = json.loads(f.read_text(encoding="utf-8"))
+            if not isinstance(session, dict):
+                raise TypeError("not a session")
+        except (OSError, ValueError, TypeError):
+            kept = f.with_name(f"session-unreadable-{_stamp()}.json")
+            f.replace(kept)
+            return {
+                "session": None,
+                "notice": f"Your saved decks couldn't be read, so a new session was started. "
+                f"The old file was kept as {kept.name} in the data folder.",
+            }
+        self._backup_session()
+        saved_by = session.pop("savedBy", None)
+        notice = None
+        if isinstance(saved_by, str) and _version_key(saved_by) > _version_key(__version__):
+            notice = (
+                f"Your decks were last saved by a newer version ({saved_by}). "
+                f"A backup was kept in the data folder's backups folder."
+            )
+        return {"session": session, "notice": notice}
 
     @_safe
     def save_session(self, session: dict[str, Any]) -> dict[str, Any]:
+        from . import __version__
+
         f = self._session_file
         tmp = f.with_suffix(".tmp")
-        tmp.write_text(json.dumps(session, ensure_ascii=False), encoding="utf-8")
+        tmp.write_text(
+            json.dumps({**session, "savedBy": __version__}, ensure_ascii=False), encoding="utf-8"
+        )
         tmp.replace(f)
         return {}
+
+    def _backup_session(self) -> None:
+        """Copy session.json into backups/, keeping the newest few distinct copies."""
+        data = self._session_file.read_bytes()
+        folder = self._dir / "backups"
+        folder.mkdir(exist_ok=True)
+        existing = sorted(folder.glob("session-*.json"))
+        if existing and existing[-1].read_bytes() == data:
+            return
+        (folder / f"session-{_stamp()}.json").write_bytes(data)
+        for old in sorted(folder.glob("session-*.json"))[:-KEEP_BACKUPS]:
+            old.unlink(missing_ok=True)
 
     # ------------------------------------------------------------------ AI
 

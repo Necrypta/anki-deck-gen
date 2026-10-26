@@ -4,6 +4,8 @@ Each pull request adds a line under **Unreleased**. Releasing moves those lines 
 
 ## [Unreleased]
 
+- **Safer saving:** each time the app starts, it backs up your decks to `backups\` in the data folder (the last 10 are kept). A save file that can't be read is now kept aside instead of being replaced by an empty deck. You'll also get a warning if your decks were last saved by a newer version. **Settings → Open data folder** shows where everything is, and the README explains how to restore a backup.
+
 ## [0.3.0] - 2026-10-25
 
 - **Generate cards with AI:** a new **Generate** page turns your study material into suggested cards for the current deck. You review, edit and untick them, then add them. Cards use the deck's note type and fields, with options for how many cards and what to focus on, and can be tagged with their source file.

@@ -2,6 +2,10 @@
 ;   ISCC.exe /DAppVersion=0.2.0 installer\AnkiDeckGenerator.iss
 ; Per-user install (no admin prompt). The fixed AppId lets new versions
 ; upgrade in place.
+;
+; User data (decks, settings, backups) lives in %APPDATA%\AnkiDeckGenerator,
+; never in {app}. Don't add it to [UninstallDelete]: upgrades and uninstalls
+; must leave it alone.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
