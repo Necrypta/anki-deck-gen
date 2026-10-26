@@ -8,7 +8,7 @@ from pathlib import Path
 import genanki
 
 from .latex import field_to_html, macro_preamble
-from .models import DeckSpec
+from .models import Card, DeckSpec
 
 CARD_CSS = """\
 .card {
@@ -92,23 +92,39 @@ def _clean_tag(tag: str) -> str:
     return "_".join(tag.split())
 
 
-def build_deck(spec: DeckSpec) -> genanki.Deck:
+def card_guid(spec: DeckSpec, card: Card) -> str:
+    """The card's own GUID, or the one earlier versions derived from its front.
+
+    A card keeps its GUID once it has one, so editing its front and exporting
+    again updates the note in Anki instead of adding a second one.
+    """
+    return card.guid or genanki.guid_for(
+        spec.name, spec.note_type, card.fields.get(spec.fields[0], "")
+    )
+
+
+def build_deck(spec: DeckSpec) -> tuple[genanki.Deck, dict[str, str]]:
+    """The deck, and the GUIDs given to cards that didn't have one yet (by card id)."""
     model = build_model(spec)
     deck = genanki.Deck(stable_id("deck", spec.name), spec.name)
+    assigned: dict[str, str] = {}
     for card in spec.cards:
         values = [field_to_html(card.fields.get(f, "")) for f in spec.fields]
         if not values[0].strip():
             continue
         tags = sorted({_clean_tag(t) for t in [*spec.tags, *card.tags] if t.strip()})
-        guid = genanki.guid_for(spec.name, spec.note_type, card.fields.get(spec.fields[0], ""))
+        guid = card_guid(spec, card)
+        if not card.guid and card.id:
+            assigned[card.id] = guid
         deck.add_note(genanki.Note(model=model, fields=values, tags=tags, guid=guid))
-    return deck
+    return deck, assigned
 
 
-def build_apkg(spec: DeckSpec, path: str | Path) -> Path:
+def build_apkg(spec: DeckSpec, path: str | Path) -> tuple[Path, dict[str, str]]:
     path = Path(path)
     if path.suffix.lower() != ".apkg":
         path = path.with_suffix(".apkg")
     path.parent.mkdir(parents=True, exist_ok=True)
-    genanki.Package(build_deck(spec)).write_to_file(str(path))
-    return path
+    deck, assigned = build_deck(spec)
+    genanki.Package(deck).write_to_file(str(path))
+    return path, assigned

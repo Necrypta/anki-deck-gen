@@ -38,18 +38,26 @@ export function newDeck(existing: Deck[] = []): Deck {
   };
 }
 
-export function duplicateDeck(deck: Deck, existing: Deck[]): Deck {
+/** A copy of a card that's a new note in Anki: no GUID or link to an opened .apkg. */
+export function copyCard(c: Card): Card {
+  const { guid: _g, noteId: _n, original: _o, ...rest } = c;
   return {
-    ...deck,
+    ...rest,
+    id: uid(),
+    fields: { ...c.fields },
+    tags: [...c.tags],
+    ...(c.hidden ? { hidden: [...c.hidden] } : {}),
+  };
+}
+
+export function duplicateDeck(deck: Deck, existing: Deck[]): Deck {
+  // The copy is an ordinary deck: it exports as new notes, not over the original's.
+  const { source: _s, ...rest } = deck;
+  return {
+    ...rest,
     id: uid(),
     name: uniqueDeckName(existing, `${deck.name} copy`),
-    cards: deck.cards.map((c) => ({
-      ...c,
-      id: uid(),
-      fields: { ...c.fields },
-      tags: [...c.tags],
-      ...(c.hidden ? { hidden: [...c.hidden] } : {}),
-    })),
+    cards: deck.cards.map(copyCard),
     tags: [...deck.tags],
     updatedAt: Date.now(),
   };
@@ -96,6 +104,7 @@ export function migrateSession(raw: unknown): Session {
       tags: d.tags ?? [],
       updatedAt: d.updatedAt ?? Date.now(),
       customFields: d.customFields ?? (d.noteType === "custom" ? [...d.fields!] : undefined),
+      ...(d.source ? { source: d.source } : {}),
     }));
   if (!decks.length) return { ...newSession(), settings };
   const active = decks.some((d) => d.id === s.activeDeckId) ? (s.activeDeckId as string) : decks[0].id;

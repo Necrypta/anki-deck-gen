@@ -20,6 +20,8 @@ DEFAULT_FIELDS: dict[str, list[str]] = {
 class Card:
     fields: dict[str, str]
     tags: list[str] = field(default_factory=list)
+    id: str = ""  # the app's card id
+    guid: str = ""  # Anki's note id: kept so a re-export updates the note
 
     def to_dict(self) -> dict[str, Any]:
         return {"fields": dict(self.fields), "tags": list(self.tags)}
@@ -29,6 +31,8 @@ class Card:
         return cls(
             fields={str(k): str(v) for k, v in data.get("fields", {}).items()},
             tags=[str(t) for t in data.get("tags", [])],
+            id=str(data.get("id") or ""),
+            guid=str(data.get("guid") or ""),
         )
 
 

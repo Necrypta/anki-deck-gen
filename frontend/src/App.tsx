@@ -11,6 +11,7 @@ import { Icon, type IconName } from "./components/Icon";
 import { ImportView } from "./components/ImportView";
 import { SettingsView } from "./components/SettingsView";
 import {
+  copyCard,
   duplicateDeck,
   emptyCard,
   exportableCards,
@@ -19,6 +20,7 @@ import {
   newDeck,
   newSession,
   uid,
+  uniqueDeckName,
 } from "./lib/deck";
 import { hasMathProblem } from "./lib/math";
 import type {
@@ -307,11 +309,7 @@ export default function App() {
   const duplicateCard = (id: string) => {
     if (!deck) return;
     const idx = deck.cards.findIndex((c) => c.id === id);
-    const copy: Card = {
-      ...deck.cards[idx],
-      id: uid(),
-      fields: { ...deck.cards[idx].fields },
-    };
+    const copy: Card = copyCard(deck.cards[idx]);
     const cards = [...deck.cards];
     cards.splice(idx + 1, 0, copy);
     setDeck({ ...deck, cards });
@@ -332,14 +330,47 @@ export default function App() {
         hasMathProblem(c.fields[f] ?? "", settings.macros),
       ),
     ).length;
+    const warn = broken
+      ? ` · ${broken} card${broken === 1 ? " has" : "s have"} a LaTeX error`
+      : "";
     setExporting(true);
+    if (deck.source) {
+      // Opened from an .apkg: write that file back with every deck that came from it.
+      const packageId = deck.source.packageId;
+      const decks = session.decks.filter((d) => d.source?.packageId === packageId);
+      const res = await api.exportPackage(packageId, decks, settings.macros);
+      setExporting(false);
+      if (!res.ok) return notify(res.error, "error");
+      if (res.cancelled || !res.changes) return;
+      const c = res.changes;
+      const parts = [
+        c.updated && `${c.updated} updated`,
+        c.added && `${c.added} added`,
+        c.deleted && `${c.deleted} removed`,
+      ].filter(Boolean);
+      return notify(
+        `Saved ${res.count} notes${parts.length ? ` (${parts.join(", ")})` : ", no changes"}, scheduling kept${warn}`,
+        "info",
+        { label: "Show in folder", run: () => res.path && api.reveal(res.path) },
+      );
+    }
     const res = await api.exportDeck({ ...deck, cards }, settings.macros);
     setExporting(false);
     if (!res.ok) return notify(res.error, "error");
     if (res.cancelled) return;
-    const warn = broken
-      ? ` · ${broken} card${broken === 1 ? " has" : "s have"} a LaTeX error`
-      : "";
+    // Keep the GUIDs new cards were exported with, so later edits update them in Anki.
+    const guids = res.guids ?? {};
+    if (Object.keys(guids).length) {
+      const id = deck.id;
+      setSession((s) =>
+        s && {
+          ...s,
+          decks: s.decks.map((d) =>
+            d.id !== id ? d : { ...d, cards: d.cards.map((c) => (guids[c.id] && !c.guid ? { ...c, guid: guids[c.id] } : c)) },
+          ),
+        },
+      );
+    }
     notify(
       `Exported ${res.count} card${res.count === 1 ? "" : "s"}${warn}`,
       "info",
@@ -534,6 +565,21 @@ export default function App() {
                 setDeck({ ...deck, cards: [...kept, ...cards] });
                 setSelectedId(cards[0]?.id ?? null);
                 setView("editor");
+              }}
+              onOpenPackage={(decks, summary) => {
+                const pid = decks[0]?.source?.packageId;
+                const open = session.decks.find((d) => d.source?.packageId === pid);
+                if (open) {
+                  setSession({ ...session, activeDeckId: open.id });
+                  setView("editor");
+                  return notify("That .apkg is already open: its decks are in the sidebar");
+                }
+                const all = [...session.decks];
+                for (const d of decks) all.push({ ...d, id: uid(), name: uniqueDeckName(all, d.name), tags: [], updatedAt: Date.now() });
+                const made = all.slice(session.decks.length);
+                setSession({ ...session, decks: all, activeDeckId: made[0].id });
+                setView("editor");
+                notify(summary);
               }}
               onReplace={(next) => {
                 setDeck({

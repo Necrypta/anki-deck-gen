@@ -8,6 +8,20 @@ export interface Card {
   tags: string[];
   /** Values beyond the current note type's fields: kept, not shown or exported. */
   hidden?: string[];
+  /** Anki's id for the note, kept so a re-export updates it instead of adding a copy. */
+  guid?: string;
+  /** Opened from an .apkg: the note's id there, and a hash of its content as opened. */
+  noteId?: string;
+  original?: string;
+}
+
+/** Where a deck opened from an .apkg came from; its note type stays as Anki has it. */
+export interface DeckSource {
+  packageId: string;
+  notetypeId: string;
+  notetypeName: string;
+  ankiDeckId: string;
+  format: "modern" | "legacy";
 }
 
 export interface Deck {
@@ -20,6 +34,8 @@ export interface Deck {
   updatedAt: number;
   /** The Custom layout, remembered while a built-in type is selected. */
   customFields?: string[];
+  /** Opened from an .apkg: exporting patches that file, keeping its scheduling. */
+  source?: DeckSource;
 }
 
 export interface MacroDef {

@@ -48,7 +48,7 @@ def main(argv: list[str] | None = None) -> int:
         tags=result.tags,
         macros=DEFAULT_MACROS,
     )
-    out = build_apkg(spec, args.output or args.input.with_suffix(".apkg"))
+    out, _ = build_apkg(spec, args.output or args.input.with_suffix(".apkg"))
     print(f"Wrote {len(spec.cards)} cards to {out}")
     return 0
 

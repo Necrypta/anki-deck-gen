@@ -28,7 +28,7 @@ def test_build_basic_apkg(tmp_path):
         tags=["mech"],
         macros=DEFAULT_MACROS,
     )
-    out = build_apkg(spec, tmp_path / "deck")
+    out, _ = build_apkg(spec, tmp_path / "deck")
     assert out.suffix == ".apkg" and out.exists()
     notes = _notes(out, tmp_path)
     assert len(notes) == 2
@@ -58,7 +58,7 @@ def test_custom_fields(tmp_path):
         fields=["Term", "Formula", "Units"],
         cards=[Card({"Term": "Force", "Formula": "$F=ma$", "Units": "N"})],
     )
-    notes = _notes(build_apkg(spec, tmp_path / "c.apkg"), tmp_path)
+    notes = _notes(build_apkg(spec, tmp_path / "c.apkg")[0], tmp_path)
     assert notes[0][0].split("\x1f") == ["Force", r"\(F=ma\)", "N"]
 
 
@@ -91,3 +91,43 @@ def test_cli_example(tmp_path):
     notes = _notes(out, tmp_path)
     assert len(notes) == 8
     assert any("maxwell" in n[1] and "sample" in n[1] for n in notes)
+
+
+def test_guid_survives_front_edits(tmp_path):
+    import genanki
+
+    api = Api(data_dir=tmp_path)
+    deck = {
+        "name": "D",
+        "noteType": "basic",
+        "fields": ["Front", "Back", "Extra"],
+        "cards": [
+            {"id": "c1", "fields": {"Front": "Old front", "Back": "a"}, "tags": []},
+        ],
+    }
+    # A card from an older version gets the GUID its last export had…
+    api.save_session({"version": 2, "decks": [deck]})
+    card = api.load_session()["session"]["decks"][0]["cards"][0]
+    assert card["guid"] == genanki.guid_for("D", "basic", "Old front")
+    # …and keeps it after its front changes.
+    card["fields"]["Front"] = "New front"
+    spec = {
+        "name": "D",
+        "note_type": "basic",
+        "fields": ["Front", "Back", "Extra"],
+        "cards": [card],
+    }
+    res = api.write_deck(spec, str(tmp_path / "d.apkg"))
+    assert res["guids"] == {}
+    with zipfile.ZipFile(res["path"]) as z:
+        z.extract("collection.anki2", tmp_path / "x")
+    con = sqlite3.connect(tmp_path / "x" / "collection.anki2")
+    assert con.execute("select guid from notes").fetchone()[0] == genanki.guid_for(
+        "D", "basic", "Old front"
+    )
+    con.close()
+    # A new card's GUID is handed back so the app can keep it.
+    new = {**spec, "cards": [{"id": "c2", "fields": {"Front": "Q", "Back": "A"}, "tags": []}]}
+    assert api.write_deck(new, str(tmp_path / "e.apkg"))["guids"] == {
+        "c2": genanki.guid_for("D", "basic", "Q")
+    }
