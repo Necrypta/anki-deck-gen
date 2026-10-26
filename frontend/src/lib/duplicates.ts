@@ -168,3 +168,15 @@ export function findDuplicates(
     return best;
   });
 }
+
+/** Which pasted cards an import adds: duplicates are left out when `skip` is on, unless kept. */
+export function importPlan(
+  cards: { fields: Record<string, string> }[],
+  deck: DeckIndex | null,
+  order: string[],
+  skip: boolean,
+  kept: ReadonlySet<number> = new Set(),
+): { matches: (DuplicateMatch | null)[]; include: boolean[] } {
+  const matches = findDuplicates(cards, deck ?? indexDeck([], order), order);
+  return { matches, include: matches.map((m, i) => !skip || !m || kept.has(i)) };
+}

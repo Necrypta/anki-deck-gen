@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { cardsFromParse } from "../lib/deck";
+import { importPlan, indexDeck } from "../lib/duplicates";
 import { DEFAULT_FIELDS, type Card, type Deck, type MacroDef, type ParseResult } from "../types";
+import { DuplicateBox } from "./DuplicateBox";
 import { Icon } from "./Icon";
 import { MathPreview } from "./MathPreview";
 import { Segmented } from "./Segmented";
@@ -36,7 +38,12 @@ export function ImportView({ deck, macros, onAppend, onReplace, notify }: Props)
   const [fieldList, setFieldList] = useState(deck.fields.join(", "));
   const [result, setResult] = useState<ParseResult | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [skipDuplicates, setSkipDuplicates] = useState(true);
+  /** Duplicates the user chose to add anyway, by row. */
+  const [kept, setKept] = useState<ReadonlySet<number>>(new Set());
   const seq = useRef(0);
+
+  useEffect(() => setKept(new Set()), [result]);
 
   useEffect(() => {
     if (!text.trim()) {
@@ -81,30 +88,52 @@ export function ImportView({ deck, macros, onAppend, onReplace, notify }: Props)
   const count = result?.cards.length ?? 0;
   const lostFields = parsedFields.filter((f) => !deck.fields.some((d) => d.toLowerCase() === f.toLowerCase()));
 
-  const append = () => {
-    if (!result) return;
-    onAppend(cardsFromParse(result, deck.fields));
-    notify(`Added ${count} card${count === 1 ? "" : "s"}`);
-    setText("");
-    setFileName(null);
-  };
-
-  const replace = () => {
-    if (!result) return;
+  // What "Replace deck" would make the deck look like.
+  const replaced = useMemo(() => {
+    if (!result) return null;
     const parsed = result.fields ?? deck.fields;
     const noteType = result.note_type ?? (sameFields(parsed, DEFAULT_FIELDS.basic) ? "basic" : "custom");
     // Pad e.g. "Front, Back" columns out to the full built-in field list.
     const fields =
       noteType !== "custom" && sameFields(parsed, DEFAULT_FIELDS[noteType]) ? [...DEFAULT_FIELDS[noteType]] : parsed;
+    return { noteType, fields, cards: cardsFromParse({ ...result, tags: [] }, fields) };
+  }, [result, deck.fields]);
+
+  // Duplicates: against the deck when adding; only within the paste when replacing.
+  const deckIndex = useMemo(() => indexDeck(deck.cards, deck.fields), [deck.cards, deck.fields]);
+  const appended = useMemo(() => (result ? cardsFromParse(result, deck.fields) : []), [result, deck.fields]);
+  const addPlan = useMemo(
+    () => importPlan(appended, deckIndex, deck.fields, skipDuplicates, kept),
+    [appended, deckIndex, deck.fields, skipDuplicates, kept],
+  );
+  const replacePlan = useMemo(
+    () => (replaced ? importPlan(replaced.cards, null, replaced.fields, skipDuplicates, kept) : null),
+    [replaced, skipDuplicates, kept],
+  );
+  const addCount = addPlan.include.filter(Boolean).length;
+  const replaceCount = replacePlan?.include.filter(Boolean).length ?? 0;
+  const duplicateCount = addPlan.matches.filter(Boolean).length;
+
+  const append = () => {
+    if (!result) return;
+    onAppend(appended.filter((_, i) => addPlan.include[i]));
+    const skipped = count - addCount;
+    notify(`Added ${addCount} card${addCount === 1 ? "" : "s"}${skipped ? `, skipped ${skipped} duplicate${skipped === 1 ? "" : "s"}` : ""}`);
+    setText("");
+    setFileName(null);
+  };
+
+  const replace = () => {
+    if (!result || !replaced || !replacePlan) return;
     onReplace({
       ...deck,
       name: result.deck ?? deck.name,
-      noteType,
-      fields,
+      noteType: replaced.noteType,
+      fields: replaced.fields,
       tags: result.tags.length ? result.tags : deck.tags,
-      cards: cardsFromParse({ ...result, tags: [] }, fields),
+      cards: replaced.cards.filter((_, i) => replacePlan.include[i]),
     });
-    notify(`Deck replaced with ${count} card${count === 1 ? "" : "s"}`);
+    notify(`Deck replaced with ${replaceCount} card${replaceCount === 1 ? "" : "s"}`);
     setText("");
     setFileName(null);
   };
@@ -183,13 +212,27 @@ export function ImportView({ deck, macros, onAppend, onReplace, notify }: Props)
           <div>
             <div className="pane-title">{result ? `${count} card${count === 1 ? "" : "s"}` : "Preview"}</div>
             {result?.deck && <div className="muted small">Deck: {result.deck}</div>}
+            {duplicateCount > 0 && (
+              <label className="small skip-dups">
+                <input type="checkbox" checked={skipDuplicates} onChange={(e) => setSkipDuplicates(e.target.checked)} />
+                <span className="dup-count">
+                  Skip {duplicateCount} possible duplicate{duplicateCount === 1 ? "" : "s"}
+                </span>
+              </label>
+            )}
           </div>
           <div className="toolbar-right">
-            <button type="button" className="ghost-btn" disabled={!count} onClick={replace}>
+            <button
+              type="button"
+              className="ghost-btn"
+              disabled={!replaceCount}
+              onClick={replace}
+              title={replaceCount < count ? `Repeats within the pasted text are left out` : undefined}
+            >
               Replace deck
             </button>
-            <button type="button" className="primary-btn" disabled={!count} onClick={append}>
-              Add {count || ""} to deck
+            <button type="button" className="primary-btn" disabled={!addCount} onClick={append}>
+              Add {addCount || ""} to deck
             </button>
           </div>
         </div>
@@ -219,19 +262,47 @@ export function ImportView({ deck, macros, onAppend, onReplace, notify }: Props)
                   {parsedFields.map((f) => (
                     <th key={f}>{f}</th>
                   ))}
+                  {duplicateCount > 0 && <th>Duplicate?</th>}
                 </tr>
               </thead>
               <tbody>
-                {result.cards.slice(0, 200).map((c, i) => (
-                  <tr key={i}>
-                    <td className="muted">{i + 1}</td>
-                    {parsedFields.map((f) => (
-                      <td key={f}>
-                        <MathPreview text={c.fields[f] ?? ""} macros={macros} />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
+                {result.cards.slice(0, 200).map((c, i) => {
+                  const dup = addPlan.matches[i];
+                  return (
+                    <tr key={i} className={addPlan.include[i] ? "" : "is-off"}>
+                      <td className="muted">{i + 1}</td>
+                      {parsedFields.map((f) => (
+                        <td key={f}>
+                          <MathPreview text={c.fields[f] ?? ""} macros={macros} />
+                        </td>
+                      ))}
+                      {duplicateCount > 0 && (
+                        <td className="dup-cell">
+                          {dup && (
+                            <DuplicateBox
+                              match={dup}
+                              other={dup.where === "deck" ? deck.cards[dup.index] : appended[dup.index]}
+                              fields={deck.fields}
+                              macros={macros}
+                              keepLabel={kept.has(i) ? "Skip it" : "Add anyway"}
+                              onKeepBoth={
+                                skipDuplicates
+                                  ? () =>
+                                      setKept((k) => {
+                                        const next = new Set(k);
+                                        if (next.has(i)) next.delete(i);
+                                        else next.add(i);
+                                        return next;
+                                      })
+                                  : undefined
+                              }
+                            />
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             {count > 200 && <div className="muted small pad">Showing the first 200 of {count}.</div>}

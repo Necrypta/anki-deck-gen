@@ -4,6 +4,8 @@ Each pull request adds a line under **Unreleased**. Releasing moves those lines 
 
 ## [Unreleased]
 
+- **Duplicate warnings on Import:** pasted or opened cards that repeat a card in the deck, or one earlier in the text, are marked in the preview with **Compare**, and skipped when you add them (untick **Skip duplicates**, or click **Add anyway** on a card, to keep them).
+
 ## [0.4.0] - 2026-10-26
 
 - **Safer saving:** each time the app starts, it backs up your decks to `backups\` in the data folder (the last 10 are kept). A save file that can't be read is now kept aside instead of being replaced by an empty deck. You'll also get a warning if your decks were last saved by a newer version. **Settings → Open data folder** shows where everything is, and the README explains how to restore a backup.
