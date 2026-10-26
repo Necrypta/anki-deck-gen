@@ -45,6 +45,19 @@ Download **`AnkiDeckGenerator-Setup-X.Y.Z.exe`** from the [Releases page](https:
 
 Windows SmartScreen will warn about the unsigned app: choose **More info → Run anyway**.
 
+### Editing decks from Anki (.apkg)
+
+You can open a deck exported from Anki, edit it here, and export it again with its reviews kept.
+
+1. In Anki, **File → Export…**, choose *Anki Deck Package (.apkg)*, and tick **Include scheduling information** and **Include media**.
+2. Here, **Import → Open .apkg** (or drop the file). Each Anki deck opens as its own deck in the sidebar, one per note type. Images show in the previews.
+3. Edit, add or delete cards as usual. The note type and fields stay as Anki has them (a "From Anki" badge marks these decks), because changing them would make Anki treat the notes as new.
+4. **Export .apkg** saves a copy of the original file with only your changes applied. Note types, templates, styling, media, every card's due date and interval, and the review history are kept as they were.
+
+When you import that file back into Anki, edited notes are updated in place (they keep their reviews), and new cards arrive as new cards. Two things Anki's importer doesn't do: it never deletes notes, so cards you deleted here stay in your collection until you delete them in Anki; and a removed cloze number leaves an empty card, which **Tools → Empty Cards** in Anki clears. Your LaTeX macros are written out in the edited notes, since the deck's own templates don't define them.
+
+Both the current Anki package format and the older one ("Support older Anki versions") work.
+
 ### Where your decks are saved
 
 Everything you make (decks, cards, field layouts, macros and settings) is autosaved to `%APPDATA%\AnkiDeckGenerator\session.json`. **Settings → Open data folder** takes you there. The Gemini API key is kept in Windows Credential Manager, not in that file.

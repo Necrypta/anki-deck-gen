@@ -4,6 +4,10 @@ Each pull request adds a line under **Unreleased**. Releasing moves those lines 
 
 ## [Unreleased]
 
+- **Open and edit Anki decks (.apkg):** **Import → Open .apkg** opens a deck exported from Anki, with its images, and exporting saves it back with every card's reviews, intervals and due dates kept, plus its note types, styling and media. Edited notes update in place when you import the file into Anki again.
+- **Edited cards no longer duplicate in Anki:** exporting a deck again after changing a card's front used to add it to Anki as a new card (with no reviews). Each card now keeps the same identity across exports.
+- Field previews now show basic formatting such as **bold** and line breaks, the way Anki does.
+
 - **Duplicate warnings on Import:** pasted or opened cards that repeat a card in the deck, or one earlier in the text, are marked in the preview with **Compare**, and skipped when you add them (untick **Skip duplicates**, or click **Add anyway** on a card, to keep them).
 
 ## [0.4.0] - 2026-10-26

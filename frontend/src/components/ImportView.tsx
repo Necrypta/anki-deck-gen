@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../api";
+import { api, type OpenedPackage } from "../api";
 import { cardsFromParse } from "../lib/deck";
 import { importPlan, indexDeck } from "../lib/duplicates";
 import { DEFAULT_FIELDS, type Card, type Deck, type MacroDef, type ParseResult } from "../types";
@@ -16,6 +16,8 @@ interface Props {
   macros: MacroDef[];
   onAppend: (cards: Card[]) => void;
   onReplace: (deck: Deck) => void;
+  /** Decks read from an .apkg, to add to the sidebar. */
+  onOpenPackage: (decks: OpenedPackage["decks"], summary: string) => void;
   notify: (msg: string, kind?: "error" | "info") => void;
 }
 
@@ -30,7 +32,7 @@ Back: $$\\curl\\vb{E} = -\\pdv{\\vb{B}}{t}$$
 Extra: The minus sign is Lenz's law.
 `;
 
-export function ImportView({ deck, macros, onAppend, onReplace, notify }: Props) {
+export function ImportView({ deck, macros, onAppend, onReplace, onOpenPackage, notify }: Props) {
   const [text, setText] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
   const [format, setFormat] = useState<Format>("block");
@@ -38,6 +40,7 @@ export function ImportView({ deck, macros, onAppend, onReplace, notify }: Props)
   const [fieldList, setFieldList] = useState(deck.fields.join(", "));
   const [result, setResult] = useState<ParseResult | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [opening, setOpening] = useState(false);
   const [skipDuplicates, setSkipDuplicates] = useState(true);
   /** Duplicates the user chose to add anyway, by row. */
   const [kept, setKept] = useState<ReadonlySet<number>>(new Set());
@@ -77,10 +80,41 @@ export function ImportView({ deck, macros, onAppend, onReplace, notify }: Props)
     }
   };
 
+  const opened = (res: Awaited<ReturnType<typeof api.uploadApkg>>) => {
+    setOpening(false);
+    if (!res.ok) return notify(res.error, "error");
+    if (!res.decks?.length) return notify("That .apkg has no notes", "error");
+    const { name, notes, media } = res.package;
+    const n = res.decks.length;
+    onOpenPackage(
+      res.decks,
+      `Opened ${name}: ${notes} note${notes === 1 ? "" : "s"} in ${n} deck${n === 1 ? "" : "s"}` +
+        (media ? `, ${media} media file${media === 1 ? "" : "s"}` : "") +
+        ". Reviews and scheduling are kept when you export it.",
+    );
+  };
+
+  const openApkg = async () => {
+    setOpening(true);
+    const res = await api.openApkg();
+    if (res.ok && res.cancelled) return setOpening(false);
+    opened(res as Awaited<ReturnType<typeof api.uploadApkg>>);
+  };
+
   const onDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
     const file = e.dataTransfer.files[0];
+    if (file && /\.apkg$/i.test(file.name)) {
+      setOpening(true);
+      const data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+      return opened(await api.uploadApkg(file.name, data));
+    }
     if (file) loadText(await file.text(), file.name);
   };
 
@@ -168,6 +202,15 @@ export function ImportView({ deck, macros, onAppend, onReplace, notify }: Props)
             <button type="button" className="ghost-btn" onClick={openFile}>
               <Icon name="file" size={14} /> Open file
             </button>
+            <button
+              type="button"
+              className="ghost-btn"
+              onClick={openApkg}
+              disabled={opening}
+              title="Open an Anki deck (.apkg) to edit it here, keeping its reviews and media"
+            >
+              <Icon name="import" size={14} /> {opening ? "Opening…" : "Open .apkg"}
+            </button>
           </div>
         </div>
 
@@ -196,7 +239,7 @@ export function ImportView({ deck, macros, onAppend, onReplace, notify }: Props)
           onChange={(e) => setText(e.target.value)}
           placeholder={
             format === "block"
-              ? "Paste text, or drop a .txt file here.\n\nFront: question\nBack: answer with $math$\n---\nFront: …"
+              ? "Paste text, or drop a .txt or .apkg file here.\n\nFront: question\nBack: answer with $math$\n---\nFront: …"
               : "One card per line, e.g.\nNewton's 2nd law\t$F = ma$"
           }
         />
@@ -225,9 +268,15 @@ export function ImportView({ deck, macros, onAppend, onReplace, notify }: Props)
             <button
               type="button"
               className="ghost-btn"
-              disabled={!replaceCount}
+              disabled={!replaceCount || !!deck.source}
               onClick={replace}
-              title={replaceCount < count ? `Repeats within the pasted text are left out` : undefined}
+              title={
+                deck.source
+                  ? "This deck came from an .apkg: add cards to it instead, so its notes and reviews stay"
+                  : replaceCount < count
+                    ? "Repeats within the pasted text are left out"
+                    : undefined
+              }
             >
               Replace deck
             </button>

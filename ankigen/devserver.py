@@ -33,6 +33,12 @@ class DevApi(Api):
     def open_source_file(self):  # type: ignore[override]
         return {"ok": False, "error": "No file dialog in browser mode: drop the file instead"}
 
+    def open_apkg(self):  # type: ignore[override]
+        return {"ok": False, "error": "No file dialog in browser mode: drop the .apkg instead"}
+
+    def export_package(self, package_id, decks, macros=None):  # type: ignore[override]
+        return self.write_package(package_id, decks, str(EXPORT_DIR / "edited.apkg"), macros)
+
     def reveal(self, path):  # type: ignore[override]
         return {"ok": True}
 

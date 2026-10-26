@@ -273,6 +273,7 @@ class Api:
         out = Path(path)
         if out.suffix.lower() != ".apkg":
             out = out.with_suffix(".apkg")
+        out.parent.mkdir(parents=True, exist_ok=True)
         changes = anki_package.write_package(original, out, decks, normalize_macros(macros))
         return {
             "path": str(out),

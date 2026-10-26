@@ -4,6 +4,7 @@
 import katex from "katex";
 import "katex/contrib/mhchem";
 import type { MacroDef } from "../types";
+import { sanitizeHtml } from "./html";
 import { expandMacros } from "./macros";
 
 type Segment = { kind: "text"; value: string } | { kind: "math"; value: string; display: boolean };
@@ -69,7 +70,8 @@ const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 function renderText(s: string): string {
-  return escapeHtml(s)
+  return sanitizeHtml(s)
+    .replace(/\[sound:([^\]]+)\]/g, '<span class="media-chip">♪ $1</span>')
     .replace(/\{\{c(\d+)::/g, '<span class="cloze" data-c="$1">')
     .replace(/::[^{}]*?\}\}/g, "</span>")
     .replace(/\}\}/g, "</span>")

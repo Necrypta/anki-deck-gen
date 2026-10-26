@@ -23,6 +23,7 @@ import {
   uniqueDeckName,
 } from "./lib/deck";
 import { hasMathProblem } from "./lib/math";
+import { MediaContext } from "./lib/media";
 import type {
   AiStatus,
   BuildInfo,
@@ -337,7 +338,9 @@ export default function App() {
     if (deck.source) {
       // Opened from an .apkg: write that file back with every deck that came from it.
       const packageId = deck.source.packageId;
-      const decks = session.decks.filter((d) => d.source?.packageId === packageId);
+      const decks = session.decks.filter(
+        (d) => d.source?.packageId === packageId,
+      );
       const res = await api.exportPackage(packageId, decks, settings.macros);
       setExporting(false);
       if (!res.ok) return notify(res.error, "error");
@@ -351,7 +354,10 @@ export default function App() {
       return notify(
         `Saved ${res.count} notes${parts.length ? ` (${parts.join(", ")})` : ", no changes"}, scheduling kept${warn}`,
         "info",
-        { label: "Show in folder", run: () => res.path && api.reveal(res.path) },
+        {
+          label: "Show in folder",
+          run: () => res.path && api.reveal(res.path),
+        },
       );
     }
     const res = await api.exportDeck({ ...deck, cards }, settings.macros);
@@ -362,13 +368,21 @@ export default function App() {
     const guids = res.guids ?? {};
     if (Object.keys(guids).length) {
       const id = deck.id;
-      setSession((s) =>
-        s && {
-          ...s,
-          decks: s.decks.map((d) =>
-            d.id !== id ? d : { ...d, cards: d.cards.map((c) => (guids[c.id] && !c.guid ? { ...c, guid: guids[c.id] } : c)) },
-          ),
-        },
+      setSession(
+        (s) =>
+          s && {
+            ...s,
+            decks: s.decks.map((d) =>
+              d.id !== id
+                ? d
+                : {
+                    ...d,
+                    cards: d.cards.map((c) =>
+                      guids[c.id] && !c.guid ? { ...c, guid: guids[c.id] } : c,
+                    ),
+                  },
+            ),
+          },
       );
     }
     notify(
@@ -517,102 +531,120 @@ export default function App() {
           </div>
         </header>
 
-        <main className="content">
-          {view === "editor" && (
-            <EditorView
-              key={deck.id}
-              deck={deck}
-              macros={settings.macros}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-              onDeckChange={setDeck}
-              onAddCard={addCard}
-              onDeleteCard={deleteCard}
-              onDuplicateCard={duplicateCard}
-              onOpenImport={() => setView("import")}
-            />
-          )}
-          {view === "generate" && (
-            <GenerateView
-              key={deck.id}
-              deck={deck}
-              macros={settings.macros}
-              ai={settings.ai}
-              status={aiStatus}
-              state={generate[deck.id] ?? emptyGenerateState()}
-              onState={updateGenerate}
-              onAiChange={(ai) => setSettings({ ...settings, ai })}
-              onAdd={(cards) => {
-                const kept = deck.cards.filter(
-                  (c) => !isEmptyCard(c, deck.fields),
-                );
-                setDeck({ ...deck, cards: [...kept, ...cards] });
-              }}
-              onOpenSettings={() => setView("settings")}
-              notify={notify}
-            />
-          )}
-          {view === "import" && (
-            <ImportView
-              key={deck.id}
-              deck={deck}
-              macros={settings.macros}
-              notify={notify}
-              onAppend={(cards) => {
-                const kept = deck.cards.filter(
-                  (c) => !isEmptyCard(c, deck.fields),
-                );
-                setDeck({ ...deck, cards: [...kept, ...cards] });
-                setSelectedId(cards[0]?.id ?? null);
-                setView("editor");
-              }}
-              onOpenPackage={(decks, summary) => {
-                const pid = decks[0]?.source?.packageId;
-                const open = session.decks.find((d) => d.source?.packageId === pid);
-                if (open) {
-                  setSession({ ...session, activeDeckId: open.id });
+        <MediaContext.Provider value={deck.source?.packageId ?? null}>
+          <main className="content">
+            {view === "editor" && (
+              <EditorView
+                key={deck.id}
+                deck={deck}
+                macros={settings.macros}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                onDeckChange={setDeck}
+                onAddCard={addCard}
+                onDeleteCard={deleteCard}
+                onDuplicateCard={duplicateCard}
+                onOpenImport={() => setView("import")}
+              />
+            )}
+            {view === "generate" && (
+              <GenerateView
+                key={deck.id}
+                deck={deck}
+                macros={settings.macros}
+                ai={settings.ai}
+                status={aiStatus}
+                state={generate[deck.id] ?? emptyGenerateState()}
+                onState={updateGenerate}
+                onAiChange={(ai) => setSettings({ ...settings, ai })}
+                onAdd={(cards) => {
+                  const kept = deck.cards.filter(
+                    (c) => !isEmptyCard(c, deck.fields),
+                  );
+                  setDeck({ ...deck, cards: [...kept, ...cards] });
+                }}
+                onOpenSettings={() => setView("settings")}
+                notify={notify}
+              />
+            )}
+            {view === "import" && (
+              <ImportView
+                key={deck.id}
+                deck={deck}
+                macros={settings.macros}
+                notify={notify}
+                onAppend={(cards) => {
+                  const kept = deck.cards.filter(
+                    (c) => !isEmptyCard(c, deck.fields),
+                  );
+                  setDeck({ ...deck, cards: [...kept, ...cards] });
+                  setSelectedId(cards[0]?.id ?? null);
                   setView("editor");
-                  return notify("That .apkg is already open: its decks are in the sidebar");
+                }}
+                onOpenPackage={(decks, summary) => {
+                  const pid = decks[0]?.source?.packageId;
+                  const open = session.decks.find(
+                    (d) => d.source?.packageId === pid,
+                  );
+                  if (open) {
+                    setSession({ ...session, activeDeckId: open.id });
+                    setView("editor");
+                    return notify(
+                      "That .apkg is already open: its decks are in the sidebar",
+                    );
+                  }
+                  const all = [...session.decks];
+                  for (const d of decks)
+                    all.push({
+                      ...d,
+                      id: uid(),
+                      name: uniqueDeckName(all, d.name),
+                      cards: d.cards.map((c) => ({ ...c, id: uid() })),
+                      tags: [],
+                      updatedAt: Date.now(),
+                    });
+                  const made = all.slice(session.decks.length);
+                  setSession({
+                    ...session,
+                    decks: all,
+                    activeDeckId: made[0].id,
+                  });
+                  setView("editor");
+                  notify(summary);
+                }}
+                onReplace={(next) => {
+                  setDeck({
+                    ...next,
+                    id: deck.id,
+                    customFields:
+                      next.noteType === "custom"
+                        ? [...next.fields]
+                        : deck.customFields,
+                    cards: next.cards,
+                  });
+                  setSelectedId(next.cards[0]?.id ?? null);
+                  setView("editor");
+                }}
+              />
+            )}
+            {view === "settings" && (
+              <SettingsView
+                settings={settings}
+                deck={deck}
+                build={build}
+                aiStatus={aiStatus}
+                aiChecking={aiChecking}
+                onRefreshAi={refreshAi}
+                onGeminiChange={(gemini) =>
+                  setAiStatus((s) => (s ? { ...s, gemini } : s))
                 }
-                const all = [...session.decks];
-                for (const d of decks) all.push({ ...d, id: uid(), name: uniqueDeckName(all, d.name), tags: [], updatedAt: Date.now() });
-                const made = all.slice(session.decks.length);
-                setSession({ ...session, decks: all, activeDeckId: made[0].id });
-                setView("editor");
-                notify(summary);
-              }}
-              onReplace={(next) => {
-                setDeck({
-                  ...next,
-                  id: deck.id,
-                  customFields:
-                    next.noteType === "custom"
-                      ? [...next.fields]
-                      : deck.customFields,
-                  cards: next.cards,
-                });
-                setSelectedId(next.cards[0]?.id ?? null);
-                setView("editor");
-              }}
-            />
-          )}
-          {view === "settings" && (
-            <SettingsView
-              settings={settings}
-              deck={deck}
-              build={build}
-              aiStatus={aiStatus}
-              aiChecking={aiChecking}
-              onRefreshAi={refreshAi}
-              onGeminiChange={(gemini) =>
-                setAiStatus((s) => (s ? { ...s, gemini } : s))
-              }
-              notify={notify}
-              onSettingsChange={setSettings}
-              onDeckChange={setDeck}
-            />
-          )}
-        </main>
+                notify={notify}
+                onSettingsChange={setSettings}
+                onDeckChange={setDeck}
+              />
+            )}
+          </main>
+        </MediaContext.Provider>
       </div>
 
       {toast && (

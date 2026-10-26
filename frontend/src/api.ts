@@ -4,7 +4,7 @@
 // browser (`npm run dev`), calls go over HTTP to `python -m ankigen.devserver`
 // through Vite's /api proxy, so the UI can be developed with hot reload.
 
-import type { AiStatus, Deck, JobStatus, MacroDef, ModelRef, ParseResult, Session, SourceFile } from "./types";
+import type { AiStatus, Card, Deck, JobStatus, MacroDef, ModelRef, ParseResult, Session, SourceFile } from "./types";
 
 type Source = SourceFile | { kind: "text"; path: string; name: string; text: string };
 
@@ -82,7 +82,7 @@ function toPackageDeck(deck: Deck) {
 }
 
 export interface OpenedPackage {
-  decks: Omit<Deck, "id" | "updatedAt" | "tags">[];
+  decks: (Omit<Deck, "id" | "updatedAt" | "tags" | "cards"> & { cards: Omit<Card, "id">[] })[];
   package: { id: string; name: string; notes: number; media: number; format: string };
 }
 

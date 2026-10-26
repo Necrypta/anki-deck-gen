@@ -71,7 +71,16 @@ export function EditorView({
       />
       <section className="editor-main">
         <div className="editor-toolbar">
-          <Segmented label="Note type" value={deck.noteType} options={TYPES} onChange={changeType} />
+          {deck.source ? (
+            <span
+              className="pill source-pill"
+              title="Opened from an .apkg. Its note type and fields stay as Anki has them, so the notes keep their reviews when you export."
+            >
+              From Anki · {deck.source.notetypeName}
+            </span>
+          ) : (
+            <Segmented label="Note type" value={deck.noteType} options={TYPES} onChange={changeType} />
+          )}
           <button type="button" className="ghost-btn" onClick={onOpenImport} title="Create many cards from text or a file">
             <Icon name="import" size={14} /> Import batch…
           </button>
@@ -102,7 +111,7 @@ export function EditorView({
               </button>
             </div>
           )}
-          {custom && (
+          {custom && !deck.source && (
             <FieldsBar deck={deck} onDeckChange={onDeckChange} focusField={focusField} onFocused={clearFocus} />
           )}
           {card ? (
