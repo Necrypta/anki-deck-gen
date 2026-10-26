@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anki-deck-generator"
-version = "0.3.0"
+version = "0.4.0"
 description = "Desktop app for building custom Anki decks (.apkg) with LaTeX support"
 readme = "README.md"
 requires-python = ">=3.10"
