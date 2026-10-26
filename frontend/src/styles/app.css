@@ -1538,7 +1538,8 @@ input.field-name.is-editable:focus {
 .review-card > input {
   margin-top: 3px;
 }
-.review-card.is-off .review-body {
+/* Dim an unticked card, but keep its duplicate note readable. */
+.review-card.is-off .review-body > :not(.duplicate) {
   opacity: 0.45;
 }
 .review-body {
@@ -1804,6 +1805,13 @@ input.field-name.is-editable:focus {
 }
 .mismatch-source {
   color: var(--text-2);
+}
+.duplicate-actions {
+  display: flex;
+  gap: 12px;
+}
+.dup-count {
+  color: var(--warn);
 }
 
 /* ---------- Find in text (Ctrl+F) ---------- */

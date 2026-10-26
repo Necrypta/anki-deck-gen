@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import {
   bareLatex,
@@ -9,6 +9,7 @@ import {
   isLocal,
   toDeckCards,
 } from "../lib/ai";
+import { findDuplicates, indexDeck, plainText, type DuplicateMatch } from "../lib/duplicates";
 import { hasMathProblem } from "../lib/math";
 import type {
   AiSettings,
@@ -34,6 +35,8 @@ import { SourceCard } from "./SourceCard";
 export interface ReviewCard extends GeneratedCard {
   key: string;
   selected: boolean;
+  /** The user chose to keep it although it looks like a duplicate. */
+  dupDismissed?: boolean;
 }
 
 /** Kept by App per deck, so leaving the page doesn't lose work or a running job. */
@@ -94,6 +97,7 @@ interface Props {
 }
 
 const POLL_MS = 800;
+const EXISTING_LIMIT = 3000; // deck fronts sent to the writer so it can avoid repeats
 
 export function GenerateView({ deck, macros, ai, status, state, onState, onAiChange, onAdd, onOpenSettings, notify }: Props) {
   const [preview, setPreview] = useState(false);
@@ -142,6 +146,14 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
   const reading = state.readJob?.state === "running";
   const cardCount = useRef(state.cards.length);
   cardCount.current = state.cards.length;
+  const [hideDuplicates, setHideDuplicates] = useState(false);
+
+  const deckIndex = useMemo(() => indexDeck(deck.cards, deck.fields), [deck.cards, deck.fields]);
+  const deckIndexRef = useRef(deckIndex);
+  deckIndexRef.current = deckIndex;
+  const fieldsRef = useRef(deck.fields);
+  fieldsRef.current = deck.fields;
+  const dupes = useMemo(() => findDuplicates(state.cards, deckIndex, deck.fields), [state.cards, deckIndex, deck.fields]);
 
   // Poll the running job; new cards are appended as they arrive.
   useEffect(() => {
@@ -156,15 +168,13 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
         return;
       }
       const { cards, ...job } = res;
-      onState((s) =>
-        s.jobId !== jobId
-          ? s
-          : {
-              ...s,
-              job,
-              cards: [...s.cards, ...cards.map((c, i) => ({ ...c, key: `${jobId}-${s.cards.length + i}`, selected: true }))],
-            },
-      );
+      onState((s) => {
+        if (s.jobId !== jobId) return s;
+        const all = [...s.cards, ...cards.map((c, i) => ({ ...c, key: `${jobId}-${s.cards.length + i}`, selected: true }))];
+        // Cards that look like duplicates arrive unticked; after that, the user's ticks stick.
+        const found = cards.length ? findDuplicates(all, deckIndexRef.current, fieldsRef.current) : [];
+        return { ...s, job, cards: all.map((c, i) => (i >= s.cards.length && found[i] ? { ...c, selected: false } : c)) };
+      });
       if (job.state === "error") notify(job.error, "error");
       if (job.state === "running") timer = window.setTimeout(tick, POLL_MS);
     };
@@ -277,6 +287,10 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
       focus: ai.focus,
       source: ai.tagSource ? state.source : "",
       use_macros: ai.useMacros,
+      existing: deck.cards
+        .map((c) => plainText(c.fields[deck.fields[0]] ?? "").replace(/\s+/g, " ").trim().slice(0, 120))
+        .filter(Boolean)
+        .slice(-EXISTING_LIMIT),
       model: writer,
     });
     if (!res.ok) return notify(res.error, "error");
@@ -291,6 +305,8 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
     onState((s) => ({ ...s, cards: s.cards.map((c) => (c.key === key ? update(c) : c)) }));
 
   const selected = state.cards.filter((c) => c.selected);
+  const flagged = (i: number) => !!dupes[i] && !state.cards[i].dupDismissed;
+  const flaggedCount = state.cards.filter((_, i) => flagged(i)).length;
   const allSelected = state.cards.length > 0 && selected.length === state.cards.length;
 
   const add = () => {
@@ -434,7 +450,19 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
         <div className="pane-head">
           <div>
             <div className="pane-title">{state.cards.length ? `${state.cards.length} suggested cards` : "Review"}</div>
-            <div className="muted small">{writer ? `Cards written by ${describeRef(writer)}` : "No model chosen"}</div>
+            <div className="muted small">
+              {writer ? `Cards written by ${describeRef(writer)}` : "No model chosen"}
+            </div>
+            {flaggedCount > 0 && (
+              <div className="small">
+                <span className="dup-count">
+                  {flaggedCount} possible duplicate{flaggedCount === 1 ? "" : "s"}
+                </span>{" "}
+                <button type="button" className="link-btn" onClick={() => setHideDuplicates(!hideDuplicates)}>
+                  {hideDuplicates ? "Show them" : "Hide them"}
+                </button>
+              </div>
+            )}
           </div>
           <div className="toolbar-right">
             {state.cards.length > 0 && (
@@ -481,6 +509,8 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
         ) : (
           <ul className="review-list">
             {state.cards.map((c, i) => {
+              const dup = flagged(i) ? dupes[i] : null;
+              if (dup && hideDuplicates) return null;
               const problems = deck.fields.filter((f) => hasMathProblem(c.fields[f] ?? "", macros));
               const bare = deck.fields.filter((f) => bareLatex(c.fields[f] ?? ""));
               const isEditing = editing === c.key;
@@ -546,6 +576,28 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
                           </div>
                         </div>
                       ))}
+                    {dup && (
+                      <DuplicateBox
+                        match={dup}
+                        other={dup.where === "deck" ? deck.cards[dup.index] : state.cards[dup.index]}
+                        fields={deck.fields}
+                        macros={macros}
+                        onKeepBoth={() => updateCard(c.key, (x) => ({ ...x, selected: true, dupDismissed: true }))}
+                        onKeepThis={
+                          dup.where === "batch"
+                            ? () => {
+                                const otherKey = state.cards[dup.index].key;
+                                onState((s) => ({
+                                  ...s,
+                                  cards: s.cards.map((x) =>
+                                    x.key === c.key ? { ...x, selected: true, dupDismissed: true } :x.key === otherKey ? { ...x, selected: false } : x,
+                                  ),
+                                }));
+                              }
+                            : undefined
+                        }
+                      />
+                    )}
                   </div>
                   <button
                     type="button"
@@ -561,6 +613,57 @@ export function GenerateView({ deck, macros, ai, status, state, onState, onAiCha
           </ul>
         )}
       </section>
+    </div>
+  );
+}
+
+function duplicateLabel(m: DuplicateMatch): string {
+  if (m.where === "deck") return m.kind === "same" ? "Already in the deck" : "Very similar to a card in the deck";
+  return `${m.kind === "same" ? "Same as" : "Very similar to"} card ${m.index + 1} above`;
+}
+
+interface DuplicateBoxProps {
+  match: DuplicateMatch;
+  other: { fields: Record<string, string> };
+  fields: string[];
+  macros: MacroDef[];
+  onKeepBoth: () => void;
+  onKeepThis?: () => void;
+}
+
+/** The card this one seems to repeat, with ways to keep it anyway. */
+function DuplicateBox({ match, other, fields, macros, onKeepBoth, onKeepThis }: DuplicateBoxProps) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mismatch duplicate">
+      <div className="mismatch-head">
+        <span className="flag">{duplicateLabel(match)}</span>
+        <span className="duplicate-actions">
+          <button type="button" className="link-btn" onClick={() => setOpen(!open)} aria-expanded={open}>
+            {open ? "Hide" : "Compare"}
+          </button>
+          {onKeepThis && (
+            <button type="button" className="link-btn" onClick={onKeepThis}>
+              Keep this one instead
+            </button>
+          )}
+          <button type="button" className="link-btn" onClick={onKeepBoth}>
+            Keep both
+          </button>
+        </span>
+      </div>
+      {open && (
+        <div className="mismatch-source">
+          <span className="review-label">{match.where === "deck" ? "In the deck" : `Card ${match.index + 1}`}</span>
+          {fields.map((f, fi) =>
+            other.fields[f]?.trim() ? (
+              <div key={f} className={fi === 0 ? "review-front" : "review-back"}>
+                <MathPreview text={other.fields[f]} macros={macros} />
+              </div>
+            ) : null,
+          )}
+        </div>
+      )}
     </div>
   );
 }

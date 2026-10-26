@@ -17,7 +17,38 @@ from .providers import Provider
 # Words per chunk. Small local models write better cards from shorter input;
 # Gemini handles a lot at once but each request is slow, so fewer is better.
 CHUNK_WORDS = {"local": 600, "gemini": 3000}
-AVOID_LIMIT = 40  # earlier fronts passed to later chunks to avoid repeats
+# Fronts of cards already written (in the deck, or earlier in this run) that
+# go in each prompt so the model doesn't repeat them.
+AVOID_LIMIT = {"local": 40, "gemini": 150}
+
+_WORD = re.compile(r"[^\W\d_]{4,}")
+
+
+def _words(text: str) -> set[str]:
+    return {w.lower() for w in _WORD.findall(text)}
+
+
+def related(existing: list[str], chunk: str, limit: int) -> list[str]:
+    """The existing fronts that share the most words with ``chunk``."""
+    if limit <= 0:
+        return []
+    vocab = _words(chunk)
+    scored = []
+    for i, front in enumerate(existing):
+        words = _words(front)
+        shared = len(words & vocab)
+        if shared:
+            scored.append((shared / len(words) ** 0.5, -i, front))
+    scored.sort(reverse=True)
+    return [front for *_, front in scored[:limit]]
+
+
+def avoid_list(existing: list[str], written: list[str], chunk: str, limit: int) -> list[str]:
+    """Recent cards from this run, topped up with related cards from the deck."""
+    recent = written[-(limit // 2) :] if limit > 1 else []
+    taken = set(recent)
+    deck = [f for f in related(existing, chunk, limit) if f not in taken]
+    return deck[: limit - len(recent)] + recent
 
 
 def chunk_markdown(text: str, max_words: int) -> list[str]:
@@ -73,6 +104,7 @@ class Request:
     focus: str = "balanced"
     source: str = ""  # file name, for the source:: tag
     use_macros: bool = False  # let the model write math with the user's macros
+    existing: list[str] = field(default_factory=list)  # fronts already in the deck
 
     def source_tag(self) -> str | None:
         name = re.sub(r"\.[A-Za-z0-9]+$", "", self.source).strip()
@@ -100,7 +132,8 @@ def generate_cards(
     on_update: Callable[[], None] | None = None,
 ) -> None:
     """Fill ``progress.cards`` chunk by chunk; raises :class:`AiError` on failure."""
-    size = CHUNK_WORDS["gemini" if provider.kind == "gemini" else "local"]
+    tier = "gemini" if provider.kind == "gemini" else "local"
+    size = CHUNK_WORDS[tier]
     chunks = chunk_markdown(req.material, size)
     if not chunks:
         raise AiError("There's no material to make cards from")
@@ -126,7 +159,7 @@ def generate_cards(
             macros=req.macros if req.use_macros else None,
             density=req.density,
             focus=req.focus,
-            avoid=fronts[-AVOID_LIMIT:],
+            avoid=avoid_list(req.existing, fronts, chunk, AVOID_LIMIT[tier]),
             labelled=bool(table),
             output=output,
         )

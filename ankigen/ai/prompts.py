@@ -208,7 +208,8 @@ def card_messages(
     ]
     if avoid:
         user.append(
-            "Cards already written (don't repeat these):\n" + "\n".join(f"- {a}" for a in avoid)
+            "Cards that already exist (don't repeat or reword these; cover something else):\n"
+            + "\n".join(f"- {a}" for a in avoid)
         )
     user.append(f"Material:\n<<<\n{material.strip()}\n>>>")
     return system, "\n\n".join(user)
