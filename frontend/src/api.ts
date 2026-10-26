@@ -98,6 +98,8 @@ export const api = {
     focus: string;
     source: string;
     use_macros: boolean;
+    /** Fronts of the deck's cards, so the writer can avoid repeating them. */
+    existing: string[];
     model: ModelRef;
   }) => call<{ job: string }>("start_generate", request),
   openSourceFile: () => call<{ cancelled?: boolean } & Partial<Source>>("open_source_file"),

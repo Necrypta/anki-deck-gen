@@ -4,7 +4,14 @@ import pytest
 
 from ankigen.ai import catalog, secrets
 from ankigen.ai.catalog import FakeProvider
-from ankigen.ai.generate import Progress, Request, chunk_markdown, generate_cards
+from ankigen.ai.generate import (
+    Progress,
+    Request,
+    avoid_list,
+    chunk_markdown,
+    generate_cards,
+    related,
+)
 from ankigen.ai.http import AiError
 from ankigen.ai.providers import ChatResult
 from ankigen.api import Api
@@ -154,3 +161,40 @@ def test_suggest_prefers_bakeoff_winners():
     assert catalog.suggest(runtimes, "cards")["model"] == "qwen3:8b"
     assert catalog.suggest(runtimes, "read")["model"] == "qwen2.5vl:7b"
     assert catalog.suggest([], "cards") is None
+
+
+def test_avoid_list_prefers_related_deck_cards_and_respects_the_cap():
+    existing = [
+        "What is entropy?",
+        "Define the Hermite polynomials",
+        "Coulomb's law",
+        "Hermite recurrence",
+    ]
+    chunk = "The Hermite polynomials satisfy a recurrence relation."
+    assert related(existing, chunk, 5) == ["Hermite recurrence", "Define the Hermite polynomials"]
+    out = avoid_list(existing, [f"Q{i}" for i in range(10)], chunk, 6)
+    assert out == ["Hermite recurrence", "Define the Hermite polynomials", "Q7", "Q8", "Q9"]
+    assert len(avoid_list(existing * 50, [], chunk, 4)) == 4
+
+
+def test_generate_cards_tells_the_writer_about_the_deck():
+    p = Scripted(["Front: New\nBack: card"])
+    req = Request(
+        "Entropy measures disorder.", ["Front", "Back"], existing=["What is entropy?", "Ohm's law"]
+    )
+    generate_cards(p, "m", req, progress=Progress())
+    assert "- What is entropy?" in p.prompts[0] and "Ohm" not in p.prompts[0]
+
+
+def test_api_passes_existing_fronts(monkeypatch, tmp_path):
+    seen = {}
+
+    def fake_generate(provider, model, req, **kw):
+        seen["existing"] = req.existing
+
+    monkeypatch.setattr("ankigen.api.generate_cards", fake_generate)
+    api = Api(data_dir=tmp_path)
+    ref = {"backend": "fake", "url": "fake://", "model": "fake-writer"}
+    job = api.start_generate({"material": "x", "model": ref, "existing": ["a" * 300, "b"]})["job"]
+    _wait(api, job)
+    assert seen["existing"] == ["a" * 120, "b"]

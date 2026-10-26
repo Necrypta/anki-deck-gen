@@ -4,6 +4,8 @@ Each pull request adds a line under **Unreleased**. Releasing moves those lines 
 
 ## [Unreleased]
 
+- **Duplicate cards:** on the Generate page, a suggested card that repeats one already in the deck, or one suggested above it, arrives unticked and marked *Already in the deck* or *Very similar to card 4 above*. It also catches reworded versions, such as "What is the Pauli exclusion principle?" and "State the Pauli exclusion principle." **Compare** shows the two cards side by side, and **Keep both** or **Keep this one instead** settles it. The AI is also told which related cards the deck already has, so it writes fewer repeats to begin with.
+
 ## [0.3.0] - 2026-10-25
 
 - **Generate cards with AI:** a new **Generate** page turns your study material into suggested cards for the current deck. You review, edit and untick them, then add them. Cards use the deck's note type and fields, with options for how many cards and what to focus on, and can be tagged with their source file.

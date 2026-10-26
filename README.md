@@ -30,6 +30,7 @@ Open **Generate**, then paste notes, open or drop a file (PDF, image, `.txt` or 
 
 - **PDFs and images** are read first: choose the pages (thumbnails show what you picked) and click **Read pages**. A vision model turns each page into text with LaTeX, which appears in the box for you to check and trim. For PDFs with a text layer you can choose **Text layer** instead: instant, but equations usually come out garbled. Pages that were already read with the same model come back instantly.
 - Then click **Generate cards**. Suggested cards appear on the right as they're written. Untick or edit any of them, then **Add to deck**. Cards use the current deck's note type and fields, and your LaTeX macros.
+- **Duplicates:** the AI is told which related cards the deck already has, so it writes fewer repeats. Any suggestion that repeats a card in the deck, or one above it in the list, arrives unticked with a note such as *Already in the deck*. **Compare** shows the other card; **Keep both** or **Keep this one instead** settles it. The check ignores wording like "What is…" or "State…", markup and spacing, so reworded repeats are caught too.
 
 Set up a model under **Settings → AI card generation**:
 

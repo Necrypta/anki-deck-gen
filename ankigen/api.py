@@ -201,6 +201,7 @@ class Api:
             focus=request.get("focus", "balanced"),
             source=request.get("source", ""),
             use_macros=bool(request.get("use_macros")),
+            existing=[str(f)[:120] for f in (request.get("existing") or [])][-3000:],
         )
         if not req.material.strip():
             raise ValueError("Add some material first")
