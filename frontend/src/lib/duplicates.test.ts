@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cardKey, compareKeys, findDuplicates, indexDeck, normalizeMath, plainText } from "./duplicates";
+import { cardKey, compareKeys, findDuplicates, importPlan, indexDeck, normalizeMath, plainText } from "./duplicates";
 
 const order = ["Front", "Back", "Extra"];
 const card = (Front: string, Back = "", Extra = "") => ({ fields: { Front, Back, Extra } });
@@ -90,5 +90,20 @@ describe("findDuplicates", () => {
     const t = performance.now();
     findDuplicates(review, big, order);
     expect(performance.now() - t).toBeLessThan(500);
+  });
+});
+
+describe("importPlan", () => {
+  const deck = indexDeck([card("What is entropy?", "Disorder")], order);
+  const pasted = [card("Define entropy", "Disorder"), card("Ohm's law", "$V = IR$"), card("State Ohm's law", "$V=IR$")];
+
+  it("skips deck and in-paste duplicates unless kept or skipping is off", () => {
+    expect(importPlan(pasted, deck, order, true).include).toEqual([false, true, false]);
+    expect(importPlan(pasted, deck, order, true, new Set([2])).include).toEqual([false, true, true]);
+    expect(importPlan(pasted, deck, order, false).include).toEqual([true, true, true]);
+  });
+
+  it("only looks within the paste when there's no deck (Replace deck)", () => {
+    expect(importPlan(pasted, null, order, true).include).toEqual([true, true, false]);
   });
 });

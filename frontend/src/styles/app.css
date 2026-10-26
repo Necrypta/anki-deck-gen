@@ -1813,6 +1813,18 @@ input.field-name.is-editable:focus {
 .dup-count {
   color: var(--warn);
 }
+.skip-dups {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+.preview-table tr.is-off td:not(.dup-cell) {
+  opacity: 0.45;
+}
+.preview-table .dup-cell {
+  min-width: 220px;
+}
 
 /* ---------- Find in text (Ctrl+F) ---------- */
 
