@@ -2,7 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { DeckList } from "./components/DeckList";
 import { EditorView } from "./components/EditorView";
-import { emptyGenerateState, type GenerateState, GenerateView } from "./components/GenerateView";
+import {
+  emptyGenerateState,
+  type GenerateState,
+  GenerateView,
+} from "./components/GenerateView";
 import { Icon, type IconName } from "./components/Icon";
 import { ImportView } from "./components/ImportView";
 import { SettingsView } from "./components/SettingsView";
@@ -17,7 +21,15 @@ import {
   uid,
 } from "./lib/deck";
 import { hasMathProblem } from "./lib/math";
-import type { AiStatus, BuildInfo, Card, Deck, Session, Settings, View } from "./types";
+import type {
+  AiStatus,
+  BuildInfo,
+  Card,
+  Deck,
+  Session,
+  Settings,
+  View,
+} from "./types";
 
 interface Toast {
   id: number;
@@ -39,9 +51,15 @@ export default function App() {
   // Selected card, remembered per deck.
   const [selected, setSelected] = useState<Record<string, string | null>>({});
   const [toast, setToast] = useState<Toast | null>(null);
-  const [build, setBuild] = useState<BuildInfo>({ version: "", build: "", release: true, dataDir: "" });
+  const [build, setBuild] = useState<BuildInfo>({
+    version: "",
+    build: "",
+    release: true,
+    dataDir: "",
+  });
   const [exporting, setExporting] = useState(false);
   const toastTimer = useRef<number>();
+  const noSave = useRef(false);
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
   const [aiChecking, setAiChecking] = useState(false);
   // Generate page work, per deck, so switching pages keeps it (and any running job).
@@ -51,14 +69,45 @@ export default function App() {
   useEffect(() => {
     (async () => {
       const [saved, info] = await Promise.all([api.loadSession(), api.info()]);
-      setSession(saved.ok && saved.session ? migrateSession(saved.session) : newSession());
-      if (info.ok) setBuild({ version: info.version, build: info.build, release: info.release, dataDir: info.data_dir });
+      // If the saved file couldn't even be asked for, don't autosave over it.
+      if (!saved.ok) {
+        noSave.current = true;
+        notify(
+          `Couldn't load your saved decks (${saved.error}). Changes won't be saved until you restart.`,
+          "error",
+        );
+      } else if (saved.notice) {
+        const dir = info.ok ? info.data_dir : "";
+        notify(
+          saved.notice,
+          "error",
+          dir
+            ? {
+                label: "Show folder",
+                run: () => api.reveal(`${dir}/session.json`),
+              }
+            : undefined,
+        );
+      }
+      setSession(
+        saved.ok && saved.session
+          ? migrateSession(saved.session)
+          : newSession(),
+      );
+      if (info.ok)
+        setBuild({
+          version: info.version,
+          build: info.build,
+          release: info.release,
+          dataDir: info.data_dir,
+        });
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Autosave, debounced.
   useEffect(() => {
-    if (!session) return;
+    if (!session || noSave.current) return;
     const t = window.setTimeout(() => api.saveSession(session), 400);
     return () => clearTimeout(t);
   }, [session]);
@@ -75,24 +124,49 @@ export default function App() {
     setAiChecking(true);
     const res = await api.aiStatus(extraUrls ?? []);
     setAiChecking(false);
-    if (res.ok) setAiStatus({ runtimes: res.runtimes, gemini: res.gemini, suggested: res.suggested });
+    if (res.ok)
+      setAiStatus({
+        runtimes: res.runtimes,
+        gemini: res.gemini,
+        suggested: res.suggested,
+      });
   }, [extraUrls]);
 
   // Look for AI the first time the Generate or Settings page opens.
   useEffect(() => {
-    if ((view === "generate" || view === "settings") && !aiStatus && !aiChecking) refreshAi();
+    if (
+      (view === "generate" || view === "settings") &&
+      !aiStatus &&
+      !aiChecking
+    )
+      refreshAi();
   }, [view, aiStatus, aiChecking, refreshAi]);
 
-  const notify = useCallback((message: string, kind: "info" | "error" = "info", action?: Toast["action"]) => {
-    window.clearTimeout(toastTimer.current);
-    setToast({ id: Date.now(), message, kind, action });
-    toastTimer.current = window.setTimeout(() => setToast(null), action ? 6000 : 3200);
-  }, []);
+  const notify = useCallback(
+    (
+      message: string,
+      kind: "info" | "error" = "info",
+      action?: Toast["action"],
+    ) => {
+      window.clearTimeout(toastTimer.current);
+      setToast({ id: Date.now(), message, kind, action });
+      toastTimer.current = window.setTimeout(
+        () => setToast(null),
+        action ? 6000 : 3200,
+      );
+    },
+    [],
+  );
 
-  const deck = session?.decks.find((d) => d.id === session.activeDeckId) ?? session?.decks[0];
-  const selectedId = deck ? selected[deck.id] ?? deck.cards[0]?.id ?? null : null;
+  const deck =
+    session?.decks.find((d) => d.id === session.activeDeckId) ??
+    session?.decks[0];
+  const selectedId = deck
+    ? (selected[deck.id] ?? deck.cards[0]?.id ?? null)
+    : null;
   const setSelectedId = useCallback(
-    (id: string | null) => deck && setSelected((s) => ({ ...s, [deck.id]: id })),
+    (id: string | null) =>
+      deck && setSelected((s) => ({ ...s, [deck.id]: id })),
     [deck],
   );
 
@@ -100,17 +174,31 @@ export default function App() {
   const setDeck = useCallback(
     (next: Deck) =>
       setSession((s) =>
-        s ? { ...s, decks: s.decks.map((d) => (d.id === next.id ? { ...next, updatedAt: Date.now() } : d)) } : s,
+        s
+          ? {
+              ...s,
+              decks: s.decks.map((d) =>
+                d.id === next.id ? { ...next, updatedAt: Date.now() } : d,
+              ),
+            }
+          : s,
       ),
     [],
   );
   const deckId = deck?.id;
   const updateGenerate = useCallback(
     (update: (s: GenerateState) => GenerateState) =>
-      deckId && setGenerate((g) => ({ ...g, [deckId]: update(g[deckId] ?? emptyGenerateState()) })),
+      deckId &&
+      setGenerate((g) => ({
+        ...g,
+        [deckId]: update(g[deckId] ?? emptyGenerateState()),
+      })),
     [deckId],
   );
-  const setSettings = useCallback((settings: Settings) => setSession((s) => (s ? { ...s, settings } : s)), []);
+  const setSettings = useCallback(
+    (settings: Settings) => setSession((s) => (s ? { ...s, settings } : s)),
+    [],
+  );
 
   // ----- Decks -----
 
@@ -145,7 +233,10 @@ export default function App() {
     const idx = session.decks.findIndex((d) => d.id === id);
     const removed = session.decks[idx];
     const decks = session.decks.filter((d) => d.id !== id);
-    const activeDeckId = session.activeDeckId === id ? decks[Math.min(idx, decks.length - 1)].id : session.activeDeckId;
+    const activeDeckId =
+      session.activeDeckId === id
+        ? decks[Math.min(idx, decks.length - 1)].id
+        : session.activeDeckId;
     setSession({ ...session, decks, activeDeckId });
     notify(`Deleted “${removed.name}”`, "info", {
       label: "Undo",
@@ -155,7 +246,11 @@ export default function App() {
           if (!s) return s;
           const next = [...s.decks];
           next.splice(idx, 0, removed);
-          return { ...s, decks: next, activeDeckId: wasActive ? removed.id : s.activeDeckId };
+          return {
+            ...s,
+            decks: next,
+            activeDeckId: wasActive ? removed.id : s.activeDeckId,
+          };
         });
         setToast(null);
       },
@@ -212,7 +307,11 @@ export default function App() {
   const duplicateCard = (id: string) => {
     if (!deck) return;
     const idx = deck.cards.findIndex((c) => c.id === id);
-    const copy: Card = { ...deck.cards[idx], id: uid(), fields: { ...deck.cards[idx].fields } };
+    const copy: Card = {
+      ...deck.cards[idx],
+      id: uid(),
+      fields: { ...deck.cards[idx].fields },
+    };
     const cards = [...deck.cards];
     cards.splice(idx + 1, 0, copy);
     setDeck({ ...deck, cards });
@@ -223,18 +322,32 @@ export default function App() {
     if (!session || !deck || exporting) return;
     const { settings } = session;
     const cards = exportableCards(deck);
-    if (!cards.length) return notify(`Add at least one card with a ${deck.fields[0]} first`, "error");
-    const broken = cards.filter((c) => deck.fields.some((f) => hasMathProblem(c.fields[f] ?? "", settings.macros))).length;
+    if (!cards.length)
+      return notify(
+        `Add at least one card with a ${deck.fields[0]} first`,
+        "error",
+      );
+    const broken = cards.filter((c) =>
+      deck.fields.some((f) =>
+        hasMathProblem(c.fields[f] ?? "", settings.macros),
+      ),
+    ).length;
     setExporting(true);
     const res = await api.exportDeck({ ...deck, cards }, settings.macros);
     setExporting(false);
     if (!res.ok) return notify(res.error, "error");
     if (res.cancelled) return;
-    const warn = broken ? ` · ${broken} card${broken === 1 ? " has" : "s have"} a LaTeX error` : "";
-    notify(`Exported ${res.count} card${res.count === 1 ? "" : "s"}${warn}`, "info", {
-      label: "Show in folder",
-      run: () => res.path && api.reveal(res.path),
-    });
+    const warn = broken
+      ? ` · ${broken} card${broken === 1 ? " has" : "s have"} a LaTeX error`
+      : "";
+    notify(
+      `Exported ${res.count} card${res.count === 1 ? "" : "s"}${warn}`,
+      "info",
+      {
+        label: "Show in folder",
+        run: () => res.path && api.reveal(res.path),
+      },
+    );
   }, [session, deck, exporting, notify]);
 
   // Global shortcuts.
@@ -250,11 +363,24 @@ export default function App() {
       } else if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === "s") {
         e.preventDefault();
         exportDeck();
-      } else if (e.altKey && (e.key === "ArrowDown" || e.key === "ArrowUp") && view === "editor") {
+      } else if (
+        e.altKey &&
+        (e.key === "ArrowDown" || e.key === "ArrowUp") &&
+        view === "editor"
+      ) {
         e.preventDefault();
         const cards = deck.cards;
         const idx = cards.findIndex((c) => c.id === selectedId);
-        const next = cards[Math.max(0, Math.min(cards.length - 1, idx + (e.key === "ArrowDown" ? 1 : -1)))];
+        const next =
+          cards[
+            Math.max(
+              0,
+              Math.min(
+                cards.length - 1,
+                idx + (e.key === "ArrowDown" ? 1 : -1),
+              ),
+            )
+          ];
         if (next) setSelectedId(next.id);
       }
     };
@@ -319,14 +445,23 @@ export default function App() {
       </nav>
 
       <div className="main">
-        {build.build && build.build !== "dev" && __UI_BUILD__ !== "dev" && build.build !== __UI_BUILD__ && (
-          <div className="stale-banner" role="alert">
-            This window is showing a different version of the screen (screen {__UI_BUILD__}, app {build.build}).
-            <button type="button" onClick={() => location.replace(`${location.pathname}?v=${Date.now()}`)}>
-              Reload
-            </button>
-          </div>
-        )}
+        {build.build &&
+          build.build !== "dev" &&
+          __UI_BUILD__ !== "dev" &&
+          build.build !== __UI_BUILD__ && (
+            <div className="stale-banner" role="alert">
+              This window is showing a different version of the screen (screen{" "}
+              {__UI_BUILD__}, app {build.build}).
+              <button
+                type="button"
+                onClick={() =>
+                  location.replace(`${location.pathname}?v=${Date.now()}`)
+                }
+              >
+                Reload
+              </button>
+            </div>
+          )}
         <header className="topbar">
           <input
             className="deck-name"
@@ -339,7 +474,12 @@ export default function App() {
             {count} card{count === 1 ? "" : "s"}
           </span>
           <div className="topbar-right">
-            <button type="button" className="primary-btn" onClick={exportDeck} disabled={exporting}>
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={exportDeck}
+              disabled={exporting}
+            >
               <Icon name="download" />
               {exporting ? "Exporting…" : "Export .apkg"}
             </button>
@@ -372,7 +512,9 @@ export default function App() {
               onState={updateGenerate}
               onAiChange={(ai) => setSettings({ ...settings, ai })}
               onAdd={(cards) => {
-                const kept = deck.cards.filter((c) => !isEmptyCard(c, deck.fields));
+                const kept = deck.cards.filter(
+                  (c) => !isEmptyCard(c, deck.fields),
+                );
                 setDeck({ ...deck, cards: [...kept, ...cards] });
               }}
               onOpenSettings={() => setView("settings")}
@@ -386,7 +528,9 @@ export default function App() {
               macros={settings.macros}
               notify={notify}
               onAppend={(cards) => {
-                const kept = deck.cards.filter((c) => !isEmptyCard(c, deck.fields));
+                const kept = deck.cards.filter(
+                  (c) => !isEmptyCard(c, deck.fields),
+                );
                 setDeck({ ...deck, cards: [...kept, ...cards] });
                 setSelectedId(cards[0]?.id ?? null);
                 setView("editor");
@@ -395,7 +539,10 @@ export default function App() {
                 setDeck({
                   ...next,
                   id: deck.id,
-                  customFields: next.noteType === "custom" ? [...next.fields] : deck.customFields,
+                  customFields:
+                    next.noteType === "custom"
+                      ? [...next.fields]
+                      : deck.customFields,
                   cards: next.cards,
                 });
                 setSelectedId(next.cards[0]?.id ?? null);
@@ -411,7 +558,9 @@ export default function App() {
               aiStatus={aiStatus}
               aiChecking={aiChecking}
               onRefreshAi={refreshAi}
-              onGeminiChange={(gemini) => setAiStatus((s) => (s ? { ...s, gemini } : s))}
+              onGeminiChange={(gemini) =>
+                setAiStatus((s) => (s ? { ...s, gemini } : s))
+              }
               notify={notify}
               onSettingsChange={setSettings}
               onDeckChange={setDeck}
@@ -421,7 +570,11 @@ export default function App() {
       </div>
 
       {toast && (
-        <div key={toast.id} className={`toast ${toast.kind === "error" ? "is-error" : ""}`} role="status">
+        <div
+          key={toast.id}
+          className={`toast ${toast.kind === "error" ? "is-error" : ""}`}
+          role="status"
+        >
           <span>{toast.message}</span>
           {toast.action && (
             <button type="button" onClick={toast.action.run}>

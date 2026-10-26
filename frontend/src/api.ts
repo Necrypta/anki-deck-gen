@@ -83,7 +83,7 @@ export const api = {
     call<{ cancelled?: boolean; path?: string; count?: number }>("export_deck", toSpec(deck, macros)),
   reveal: (path: string) => call<object>("reveal", path),
   // Saved sessions may be older shapes; App runs them through migrateSession().
-  loadSession: () => call<{ session: unknown }>("load_session"),
+  loadSession: () => call<{ session: unknown; notice?: string | null }>("load_session"),
   saveSession: (session: Session) => call<object>("save_session", session),
 
   aiStatus: (extraUrls: string[]) => call<AiStatus>("ai_status", extraUrls),

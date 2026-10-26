@@ -4,6 +4,7 @@ Each pull request adds a line under **Unreleased**. Releasing moves those lines 
 
 ## [Unreleased]
 
+- **Safer saving:** each time the app starts, it backs up your decks to `backups\` in the data folder (the last 10 are kept). A save file that can't be read is now kept aside instead of being replaced by an empty deck. You'll also get a warning if your decks were last saved by a newer version. **Settings → Open data folder** shows where everything is, and the README explains how to restore a backup.
 - **Duplicate cards:** on the Generate page, a suggested card that repeats one already in the deck, or one suggested above it, arrives unticked and marked *Already in the deck* or *Very similar to card 4 above*. It also catches reworded versions, such as "What is the Pauli exclusion principle?" and "State the Pauli exclusion principle." **Compare** shows the two cards side by side, and **Keep both** or **Keep this one instead** settles it. The AI is also told which related cards the deck already has, so it writes fewer repeats to begin with.
 
 ## [0.3.0] - 2026-10-25
