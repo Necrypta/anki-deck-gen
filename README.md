@@ -44,6 +44,15 @@ Download **`AnkiDeckGenerator-Setup-X.Y.Z.exe`** from the [Releases page](https:
 
 Windows SmartScreen will warn about the unsigned app: choose **More info → Run anyway**.
 
+### Where your decks are saved
+
+Everything you make (decks, cards, field layouts, macros and settings) is autosaved to `%APPDATA%\AnkiDeckGenerator\session.json`. **Settings → Open data folder** takes you there. The Gemini API key is kept in Windows Credential Manager, not in that file.
+
+- **Updating is safe.** The installer only replaces the program in Program Files, so a new version picks up your decks as they are, and older saves are upgraded automatically. Uninstalling leaves them too.
+- **Backups:** each time the app starts, it copies `session.json` into `backups\` and keeps the last 10.
+- **To restore one:** close the app, then copy a backup over `session.json`.
+- **If the file is ever unreadable,** the app keeps it as `session-unreadable-….json` and starts fresh, rather than overwriting it.
+
 ## Testing updates
 
 Every change comes as a pull request, and every pull request gets its own test build:
