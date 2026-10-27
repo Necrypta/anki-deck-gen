@@ -5,6 +5,7 @@ import {
   applyPreset,
   cardsUsingField,
   cardsWithHiddenContent,
+  copyCard,
   duplicateDeck,
   migrateSession,
   moveField,
@@ -157,5 +158,21 @@ describe("custom fields and switching note types", () => {
       decks: [{ id: "x", name: "C", noteType: "custom", fields: ["Term", "Def"], cards: [], tags: [] }],
     });
     expect(s.decks[0].customFields).toEqual(["Term", "Def"]);
+  });
+});
+
+describe("decks opened from an .apkg", () => {
+  it("keep their source through migration, and copies become ordinary decks", () => {
+    const source = { packageId: "abc123def456", notetypeId: "1", notetypeName: "Basic", ankiDeckId: "2", format: "modern" as const };
+    const card = { id: "c1", fields: { Front: "q" }, tags: [], guid: "g", noteId: "9", original: "h" };
+    const s = migrateSession({ version: 2, decks: [{ id: "d", name: "A", noteType: "custom", fields: ["Front"], cards: [card], tags: [], source }] });
+    expect(s.decks[0].source).toEqual(source);
+    expect(s.decks[0].cards[0].guid).toBe("g");
+    const copy = duplicateDeck(s.decks[0], s.decks);
+    expect(copy.source).toBeUndefined();
+    expect(copy.cards[0]).not.toHaveProperty("guid");
+    expect(copy.cards[0]).not.toHaveProperty("noteId");
+    expect(copyCard(card)).toMatchObject({ fields: { Front: "q" } });
+    expect(copyCard(card).id).not.toBe("c1");
   });
 });

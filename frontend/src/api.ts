@@ -4,7 +4,7 @@
 // browser (`npm run dev`), calls go over HTTP to `python -m ankigen.devserver`
 // through Vite's /api proxy, so the UI can be developed with hot reload.
 
-import type { AiStatus, Deck, JobStatus, MacroDef, ModelRef, ParseResult, Session, SourceFile } from "./types";
+import type { AiStatus, Card, Deck, JobStatus, MacroDef, ModelRef, ParseResult, Session, SourceFile } from "./types";
 
 type Source = SourceFile | { kind: "text"; path: string; name: string; text: string };
 
@@ -61,8 +61,29 @@ function toSpec(deck: Deck, macros: MacroDef[]) {
     fields: deck.fields,
     tags: deck.tags,
     macros,
-    cards: deck.cards.map((c) => ({ fields: c.fields, tags: c.tags })),
+    cards: deck.cards.map((c) => ({ id: c.id, guid: c.guid, fields: c.fields, tags: c.tags })),
   };
+}
+
+/** A deck opened from an .apkg, as the backend patches it back in. */
+function toPackageDeck(deck: Deck) {
+  return {
+    name: deck.name,
+    fields: deck.fields,
+    source: deck.source,
+    cards: deck.cards.map((c) => ({
+      fields: c.fields,
+      tags: [...new Set([...deck.tags, ...c.tags])],
+      guid: c.guid,
+      noteId: c.noteId,
+      original: c.original,
+    })),
+  };
+}
+
+export interface OpenedPackage {
+  decks: (Omit<Deck, "id" | "updatedAt" | "tags" | "cards"> & { cards: Omit<Card, "id">[] })[];
+  package: { id: string; name: string; notes: number; media: number; format: string };
 }
 
 export const api = {
@@ -80,7 +101,20 @@ export const api = {
   openTextFile: () =>
     call<{ cancelled?: boolean; path?: string; name?: string; text?: string }>("open_text_file"),
   exportDeck: (deck: Deck, macros: MacroDef[]) =>
-    call<{ cancelled?: boolean; path?: string; count?: number }>("export_deck", toSpec(deck, macros)),
+    call<{ cancelled?: boolean; path?: string; count?: number; guids?: Record<string, string> }>(
+      "export_deck",
+      toSpec(deck, macros),
+    ),
+  openApkg: () => call<{ cancelled?: boolean } & Partial<OpenedPackage>>("open_apkg"),
+  uploadApkg: (name: string, dataUrl: string) => call<OpenedPackage>("upload_apkg", name, dataUrl),
+  mediaData: (packageId: string, names: string[]) => call<{ media: Record<string, string> }>("media_data", packageId, names),
+  exportPackage: (packageId: string, decks: Deck[], macros: MacroDef[]) =>
+    call<{
+      cancelled?: boolean;
+      path?: string;
+      count?: number;
+      changes?: { updated: number; added: number; deleted: number; new_cards: number };
+    }>("export_package", packageId, decks.map(toPackageDeck), macros),
   reveal: (path: string) => call<object>("reveal", path),
   // Saved sessions may be older shapes; App runs them through migrateSession().
   loadSession: () => call<{ session: unknown; notice?: string | null }>("load_session"),

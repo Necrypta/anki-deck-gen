@@ -6,7 +6,10 @@ Every method returns plain JSON-serialisable data. Errors come back as
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
+import mimetypes
 import os
 import re
 import subprocess
@@ -17,13 +20,14 @@ from functools import wraps
 from pathlib import Path
 from typing import Any
 
+from . import anki_package
 from .ai import catalog, secrets
 from .ai.generate import Request, generate_cards
 from .ai.jobs import Jobs
 from .ai.reading import Reader, ReadRequest, describe_source, save_upload, thumbnails
-from .deck import build_apkg
+from .deck import build_apkg, card_guid
 from .latex import DEFAULT_MACROS, normalize_macros
-from .models import DeckSpec
+from .models import NOTE_TYPES, Card, DeckSpec
 from .parsers import PARSERS, parse_text
 
 
@@ -50,6 +54,29 @@ def _stamp() -> str:
 
 def _version_key(version: str) -> tuple[int, ...]:
     return tuple(int(n) for n in re.findall(r"\d+", version)[:3])
+
+
+def _give_guids(session: dict[str, Any]) -> None:
+    """Store each card's export GUID, as earlier versions derived it from the front.
+
+    From then on the GUID stays put when the front is edited.
+    """
+    for deck in session.get("decks") or []:
+        if not isinstance(deck, dict) or not isinstance(deck.get("cards"), list):
+            continue
+        fields = deck.get("fields") or ["Front"]
+        spec = DeckSpec(
+            name=str(deck.get("name") or "").strip() or "Untitled",
+            note_type=deck.get("noteType") if deck.get("noteType") in NOTE_TYPES else "basic",
+            fields=list(fields),
+        )
+        for card in deck["cards"]:
+            if (
+                isinstance(card, dict)
+                and not card.get("guid")
+                and isinstance(card.get("fields"), dict)
+            ):
+                card["guid"] = card_guid(spec, Card.from_dict(card))
 
 
 def _safe(fn: Callable[..., Any]) -> Callable[..., dict[str, Any]]:
@@ -138,9 +165,125 @@ class Api:
         """Write without a dialog (used by tests and scripts)."""
         return self._write(DeckSpec.from_dict(deck), path)
 
+    # ------------------------------------------------------------ .apkg files
+
+    def _package_dir(self, package_id: str) -> Path:
+        if not re.fullmatch(r"[0-9a-f]{12}", package_id or ""):
+            raise ValueError("Unknown package")
+        return self._dir / "packages" / package_id
+
+    @_safe
+    def open_apkg(self) -> dict[str, Any]:
+        result = self._window.create_file_dialog(
+            _dialog("OPEN"), file_types=("Anki package (*.apkg)", "All files (*.*)")
+        )
+        if not result:
+            return {"cancelled": True}
+        return self._import_apkg(Path(result[0]))
+
+    @_safe
+    def import_apkg(self, path: str) -> dict[str, Any]:
+        return self._import_apkg(Path(path))
+
+    @_safe
+    def upload_apkg(self, name: str, data_b64: str) -> dict[str, Any]:
+        """A dropped .apkg: the page can't pass a path, so it sends the bytes."""
+        data = base64.b64decode(data_b64.split(",", 1)[-1])
+        folder = self._dir / "uploads"
+        folder.mkdir(parents=True, exist_ok=True)
+        tmp = folder / f"upload-{hashlib.sha1(data).hexdigest()[:8]}.apkg"
+        tmp.write_bytes(data)
+        try:
+            return self._import_apkg(tmp, name)
+        finally:
+            tmp.unlink(missing_ok=True)
+
+    def _import_apkg(self, path: Path, name: str | None = None) -> dict[str, Any]:
+        pkg = anki_package.read_package(path)
+        pid = anki_package.package_id(path)
+        folder = self._package_dir(pid)
+        anki_package.copy_original(path, folder)
+        media = anki_package.extract_media(path, folder / "media", pkg.media)
+        name = name or path.name
+        (folder / "info.json").write_text(json.dumps({"name": name}), encoding="utf-8")
+        decks = anki_package.package_decks(pkg, pid)
+        return {
+            "decks": decks,
+            "package": {
+                "id": pid,
+                "name": name,
+                "notes": sum(len(d["cards"]) for d in decks),
+                "media": len(media),
+                "format": "modern" if pkg.modern else "legacy",
+            },
+        }
+
+    @_safe
+    def media_data(self, package_id: str, names: list[str]) -> dict[str, Any]:
+        """Images of an opened package as data URLs, for previews."""
+        folder = self._package_dir(package_id) / "media"
+        out = {}
+        for name in names[:50]:
+            f = folder / Path(name).name
+            mime = mimetypes.guess_type(f.name)[0] or ""
+            if (
+                mime.startswith("image/")
+                and f.is_file()
+                and f.stat().st_size <= anki_package.MAX_MEDIA_BYTES
+            ):
+                out[name] = f"data:{mime};base64," + base64.b64encode(f.read_bytes()).decode()
+        return {"media": out}
+
+    @_safe
+    def export_package(
+        self, package_id: str, decks: list[dict[str, Any]], macros: Any = None
+    ) -> dict[str, Any]:
+        """Save an opened .apkg with the app's edits; scheduling and media are kept."""
+        folder = self._package_dir(package_id)
+        original = folder / "original.apkg"
+        if not original.exists():
+            raise ValueError("The original .apkg for this deck is gone; open it again to export")
+        info = (
+            json.loads((folder / "info.json").read_text("utf-8"))
+            if (folder / "info.json").exists()
+            else {}
+        )
+        target = self._window.create_file_dialog(
+            _dialog("SAVE"),
+            save_filename=info.get("name", "deck.apkg"),
+            file_types=("Anki deck (*.apkg)",),
+        )
+        if not target:
+            return {"cancelled": True}
+        target = target[0] if isinstance(target, (list, tuple)) else target
+        return self._write_package(original, target, decks, macros)
+
+    @_safe
+    def write_package(
+        self, package_id: str, decks: list[dict[str, Any]], path: str, macros: Any = None
+    ) -> dict[str, Any]:
+        """Write without a dialog (used by tests and scripts)."""
+        return self._write_package(
+            self._package_dir(package_id) / "original.apkg", path, decks, macros
+        )
+
+    def _write_package(
+        self, original: Path, path: str, decks: list[dict[str, Any]], macros: Any
+    ) -> dict[str, Any]:
+        out = Path(path)
+        if out.suffix.lower() != ".apkg":
+            out = out.with_suffix(".apkg")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        changes = anki_package.write_package(original, out, decks, normalize_macros(macros))
+        return {
+            "path": str(out),
+            "count": sum(len(d.get("cards", [])) for d in decks),
+            "changes": changes.to_dict(),
+        }
+
     def _write(self, spec: DeckSpec, path: str) -> dict[str, Any]:
-        out = build_apkg(spec, path)
-        return {"path": str(out), "count": len(spec.cards)}
+        out, guids = build_apkg(spec, path)
+        return {"path": str(out), "count": len(spec.cards), "guids": guids}
 
     @_safe
     def reveal(self, path: str) -> dict[str, Any]:
@@ -177,6 +320,7 @@ class Api:
                 f"The old file was kept as {kept.name} in the data folder.",
             }
         self._backup_session()
+        _give_guids(session)
         saved_by = session.pop("savedBy", None)
         notice = None
         if isinstance(saved_by, str) and _version_key(saved_by) > _version_key(__version__):

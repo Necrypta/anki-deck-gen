@@ -175,3 +175,187 @@ def macro_preamble(macros: Any) -> str:
     if not defs:
         return ""
     return '<div style="display:none">\\(' + "".join(defs) + "\\)</div>\n"
+
+
+# ---------------------------------------------------------------- expansion
+# Mirrors expandMacros in frontend/src/lib/macros.ts. Decks opened from an
+# .apkg keep their own card templates, which don't carry the macro preamble,
+# so their exported fields get the macros written out instead.
+
+_MAX_DEPTH = 32
+
+
+class MacroError(ValueError):
+    pass
+
+
+def _is_letter(c: str | None) -> bool:
+    return bool(c) and ("a" <= c <= "z" or "A" <= c <= "Z")
+
+
+def _at(s: str, i: int) -> str | None:
+    return s[i] if 0 <= i < len(s) else None
+
+
+def _skip_spaces(s: str, i: int) -> int:
+    while i < len(s) and s[i].isspace():
+        i += 1
+    return i
+
+
+def _match_group(s: str, start: int, open_: str, close: str) -> int:
+    depth = braces = 0
+    i = start
+    while i < len(s):
+        c = s[i]
+        if c == "\\":
+            i += 2
+            continue
+        if open_ == "[":
+            if c == "{":
+                braces += 1
+            elif c == "}":
+                braces -= 1
+            elif c == "]" and braces == 0:
+                return i
+        elif c == open_:
+            depth += 1
+        elif c == close:
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
+
+
+def _strip_outer_braces(arg: str) -> str:
+    if arg.startswith("{") and _match_group(arg, 0, "{", "}") == len(arg) - 1:
+        return arg[1:-1]
+    return arg
+
+
+def _read_arg(s: str, i: int, name: str) -> tuple[str, int]:
+    i = _skip_spaces(s, i)
+    if i >= len(s):
+        raise MacroError(f"{name} is missing an argument")
+    c = s[i]
+    if c == "{":
+        end = _match_group(s, i, "{", "}")
+        if end == -1:
+            raise MacroError(f"Unclosed {{ in an argument of {name}")
+        return s[i + 1 : end], end + 1
+    if c == "}":
+        raise MacroError(f"{name} is missing an argument")
+    if c == "\\":
+        j = i + 1
+        if _is_letter(_at(s, j)):
+            while _is_letter(_at(s, j)):
+                j += 1
+        else:
+            j += 1
+        return s[i:j], j
+    return c, i + 1
+
+
+def _expand(s: str, defs: dict[str, MacroDef], depth: int) -> str:
+    if depth > _MAX_DEPTH:
+        raise MacroError("Macros expand into each other forever (check for a loop)")
+    out: list[str] = []
+    i = 0
+    while i < len(s):
+        if s[i] != "\\":
+            out.append(s[i])
+            i += 1
+            continue
+        j = i + 1
+        if not _is_letter(_at(s, j)):
+            out.append(s[i : i + 2])
+            i += 2
+            continue
+        while _is_letter(_at(s, j)):
+            j += 1
+        name = s[i:j]
+        d = defs.get(name)
+        if d is None:
+            out.append(name)
+            i = j
+            continue
+        args: list[str] = []
+        k = j
+        mandatory = d.args
+        if d.optional is not None and d.args > 0:
+            at = _skip_spaces(s, k)
+            if _at(s, at) == "[":
+                end = _match_group(s, at, "[", "]")
+                if end == -1:
+                    raise MacroError(f"Unclosed [ after {name}")
+                args.append(_strip_outer_braces(s[at + 1 : end]))
+                k = end + 1
+            else:
+                args.append(d.optional)
+            mandatory -= 1
+        for _ in range(mandatory):
+            arg, k = _read_arg(s, k, name)
+            args.append(arg)
+
+        def sub(m: re.Match, args: list[str] = args, body: str = d.body) -> str:
+            n = int(m.group(1))
+            if n > len(args):
+                return m.group(0)
+            arg = args[n - 1]
+            glue = _is_letter(_at(arg, 0)) and re.search(r"\\[A-Za-z]+$", body[: m.start()])
+            return f" {arg}" if glue else arg
+
+        result = _expand(re.sub(r"#([1-9])", sub, d.body), defs, depth + 1)
+        if re.search(r"\\[A-Za-z]+$", result) and _is_letter(_at(s, k)):
+            result += " "
+        out.append(result)
+        i = k
+    return "".join(out)
+
+
+def expand_macros(tex: str, macros: Any) -> str:
+    defs = {m.name: m for m in normalize_macros(macros)}
+    if not defs or "\\" not in tex:
+        return tex
+    return _expand(tex, defs, 0)
+
+
+def expand_field_macros(text: str, macros: Any) -> str:
+    """Write out macros inside the ``$…$`` / ``$$…$$`` math of a field.
+
+    Math is found the same way :func:`to_anki` finds it. Math that fails to
+    expand (say, a missing argument) is left as typed.
+    """
+    defs = normalize_macros(macros)
+    if not defs or "$" not in text:
+        return text
+    out: list[str] = []
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if ch == "\\" and i + 1 < n:
+            out.append(text[i : i + 2])
+            i += 2
+            continue
+        if ch == "`":
+            end = text.find("`", i + 1)
+            if end != -1:
+                out.append(text[i : end + 1])
+                i = end + 1
+                continue
+        if ch == "$":
+            delim = "$$" if text.startswith("$$", i) else "$"
+            end = _find_closing(text, i + len(delim), delim)
+            if end != -1:
+                body = text[i + len(delim) : end]
+                try:
+                    body = expand_macros(body, defs)
+                except MacroError:
+                    pass
+                out.append(delim + body + delim)
+                i = end + len(delim)
+                continue
+        out.append(ch)
+        i += 1
+    return "".join(out)

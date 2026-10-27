@@ -4,6 +4,8 @@
 // KaTeX can't define optional arguments, so the preview expands macros here
 // before rendering. On export they're embedded as real \newcommand definitions,
 // which Anki's MathJax understands, so the cards keep the readable source.
+// Decks opened from an .apkg keep their own templates, so their edited fields
+// get the macros written out instead (expand_field_macros in ankigen/latex.py).
 
 import type { MacroDef } from "../types";
 
